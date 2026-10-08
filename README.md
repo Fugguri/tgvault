@@ -6,6 +6,19 @@
 
 Один бинарь, без Python. MTProto через [gotd/td](https://github.com/gotd/td).
 
+## Установка
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Fugguri/tgvault/main/install.sh | bash
+```
+
+Ставит `tgvault` в `~/.local/bin` и `SKILL.md` в каталоги агентов. Дальше:
+
+```bash
+tgvault setup      # whisper-cli, модели, Telegram api_id/api_hash -> ~/.config/tgvault/.env
+tgvault login      # вход в Telegram (один раз, сессия глобальная)
+```
+
 ## Возможности
 
 - **Импорт** чатов, групп, каналов и конкретных форум-топиков в
