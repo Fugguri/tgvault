@@ -3,7 +3,7 @@
 #   curl -fsSL https://raw.githubusercontent.com/<REPO>/main/install.sh | bash
 set -euo pipefail
 
-REPO="${TGIMPORT_REPO:-Fugguri/tg-import}"
+REPO="${TGIMPORT_REPO:-Fugguri/tgvault}"
 BIN_DIR="${BIN_DIR:-$HOME/.local/bin}"
 
 os="$(uname -s | tr '[:upper:]' '[:lower:]')"
