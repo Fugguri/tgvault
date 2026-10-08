@@ -95,19 +95,9 @@ func Setup(ctx context.Context, opt SetupOpts) error {
 		}
 		picked = sel
 	}
+	fmt.Println("Модели:")
 	for _, name := range picked {
-		dst := filepath.Join(modelsDir, "ggml-"+name+".bin")
-		if fileExists(dst) {
-			fmt.Printf("  ✓ %s уже есть\n", filepath.Base(dst))
-			continue
-		}
-		url := "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-" + name + ".bin"
-		fmt.Printf("  ↓ %s … ", name)
-		if err := download(ctx, url, dst); err != nil {
-			fmt.Printf("ошибка: %v\n", err)
-			continue
-		}
-		fmt.Println("ок")
+		downloadModel(ctx, modelsDir, name)
 	}
 
 	// 3. модель по умолчанию
@@ -129,6 +119,11 @@ func Setup(ctx context.Context, opt SetupOpts) error {
 		)).Run(); err != nil {
 			return err
 		}
+	}
+	// гарантируем, что дефолтная модель скачана
+	if def != "" && !fileExists(filepath.Join(modelsDir, "ggml-"+def+".bin")) {
+		fmt.Printf("Дефолтная модель %q не скачана — качаю.\n", def)
+		downloadModel(ctx, modelsDir, def)
 	}
 
 	// 4. Telegram-ключи
@@ -229,7 +224,7 @@ func ResolveWhisper(explicit string) string {
 	if p := filepath.Join(userDataDir(), "tgvault", "whisper", "build", "bin", "whisper-cli"); fileExists(p) {
 		return p
 	}
-	for _, n := range []string{"whisper-cli", "whisper-server", "whisper", "main"} {
+	for _, n := range []string{"whisper-cli", "whisper-server"} {
 		if p, err := exec.LookPath(n); err == nil {
 			return p
 		}
@@ -257,6 +252,21 @@ func availableModels(dir string) []string {
 		}
 	}
 	return out
+}
+
+func downloadModel(ctx context.Context, modelsDir, name string) {
+	dst := filepath.Join(modelsDir, "ggml-"+name+".bin")
+	if fileExists(dst) {
+		fmt.Printf("  ✓ модель %s уже есть\n", name)
+		return
+	}
+	url := "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-" + name + ".bin"
+	fmt.Printf("  ↓ модель %s … ", name)
+	if err := download(ctx, url, dst); err != nil {
+		fmt.Printf("ошибка: %v\n", err)
+		return
+	}
+	fmt.Println("ок")
 }
 
 func download(ctx context.Context, url, dst string) error {
