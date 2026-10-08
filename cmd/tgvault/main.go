@@ -58,6 +58,14 @@ func main() {
 		setupUnattend   = flag.Bool("unattended", false, "setup: без вопросов")
 		setupBuildWhisp = flag.Bool("build-whisper", false, "setup: собрать whisper.cpp, если нет")
 
+		// add (неинтерактивное добавление записи)
+		addDefault = flag.Bool("default", false, "add: импортировать каждый раз")
+		addSlug    = flag.String("slug", "", "add: имя папки")
+		addNote    = flag.String("note", "", "add: что за чат")
+		addWhen    = flag.String("when", "", "add: когда идти")
+		addWriteTo = flag.String("write-to", "", "add: кому писать")
+		addOut     = flag.String("out", "", "add: корень раскладки (для нового конфига)")
+
 		// send
 		sendChat   = flag.String("chat", "", "send: имя чата")
 		sendID     = flag.Int64("id", 0, "send: id чата")
@@ -153,6 +161,11 @@ func main() {
 			return nil
 		case "init":
 			return cli.Init(ctx, c, wd)
+		case "add":
+			return cli.Add(ctx, c, wd, cli.AddOpts{
+				Chat: *sendChat, ChatID: *sendID, Topic: *topicID, Default: *addDefault,
+				Slug: *addSlug, Note: *addNote, When: *addWhen, WriteTo: *addWriteTo, Out: *addOut,
+			})
 		case "migrate":
 			return cli.Migrate(ctx, c, wd, cli.MigrateOpts{NewOut: *newOut})
 		case "import":
@@ -199,7 +212,7 @@ func main() {
 
 var commands = map[string]bool{
 	"login": true, "init": true, "import": true, "migrate": true,
-	"setup": true, "list": true, "send": true, "bot": true, "dialogs": true, "topics": true, "voice": true,
+	"setup": true, "list": true, "add": true, "send": true, "bot": true, "dialogs": true, "topics": true, "voice": true,
 }
 
 type stringSlice []string

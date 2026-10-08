@@ -178,6 +178,7 @@ func Init(ctx context.Context, client *telegram.Client, dir string) error {
 	if bakPath != "" {
 		fmt.Printf("  бэкап старого: %s\n", bakPath)
 	}
+	ensureGitignore(dir, out)
 	return nil
 }
 
