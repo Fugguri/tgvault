@@ -1,0 +1,13 @@
+.env
+*.session
+tg.session.json
+*.db
+/tgvault
+/tgimport
+/dist/
+/third_party/
+/models/
+/docs/
+.tg-import.json
+voice_*.ogg
+voice_*.wav
