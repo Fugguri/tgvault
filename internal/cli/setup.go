@@ -41,7 +41,6 @@ type SetupOpts struct {
 // Setup — установочный мастер: deps, whisper-cli, модели, Telegram-ключи,
 // глобальный .env (~/.config/tgvault/.env). При opt.Unattended не спрашивает.
 func Setup(ctx context.Context, opt SetupOpts) error {
-	whisperBin := opt.WhisperBin
 	cfgDir := configDir()
 	dataDir := filepath.Join(userDataDir(), "tgvault")
 	modelsDir := filepath.Join(dataDir, "models")
@@ -50,12 +49,13 @@ func Setup(ctx context.Context, opt SetupOpts) error {
 	fmt.Println("Проверка зависимостей:")
 	checkBin("ffmpeg", "нужен для ogg→wav")
 
-	// 1. whisper-cli
-	if !fileExists(whisperBin) {
-		whisperBin = filepath.Join(dataDir, "whisper", "build", "bin", "whisper-cli")
-	}
-	if !fileExists(whisperBin) {
+	// 1. whisper-cli (авто-резолв: env → ранее собранный → PATH → типовые пути)
+	whisperBin := ResolveWhisper(opt.WhisperBin)
+	if whisperBin != "" {
+		fmt.Printf("  ✓ whisper-cli: %s\n", whisperBin)
+	} else {
 		fmt.Println("whisper-cli не найден.")
+		whisperBin = filepath.Join(dataDir, "whisper", "build", "bin", "whisper-cli")
 		build := opt.BuildWhisper
 		if !opt.Unattended {
 			if err := huh.NewForm(huh.NewGroup(
@@ -75,8 +75,6 @@ func Setup(ctx context.Context, opt SetupOpts) error {
 				fmt.Printf("  ✓ собран: %s\n", p)
 			}
 		}
-	} else {
-		fmt.Printf("  ✓ whisper-cli: %s\n", whisperBin)
 	}
 
 	// 2. модели
@@ -218,6 +216,35 @@ func checkBin(name, why string) {
 func fileExists(p string) bool {
 	_, err := os.Stat(p)
 	return err == nil
+}
+
+// ResolveWhisper ищет whisper-cli: явный путь → ранее собранный → PATH → типовые пути.
+func ResolveWhisper(explicit string) string {
+	if explicit != "" && fileExists(explicit) {
+		if abs, err := filepath.Abs(explicit); err == nil {
+			return abs
+		}
+		return explicit
+	}
+	if p := filepath.Join(userDataDir(), "tgvault", "whisper", "build", "bin", "whisper-cli"); fileExists(p) {
+		return p
+	}
+	for _, n := range []string{"whisper-cli", "whisper-server", "whisper", "main"} {
+		if p, err := exec.LookPath(n); err == nil {
+			return p
+		}
+	}
+	home, _ := os.UserHomeDir()
+	for _, p := range []string{
+		filepath.Join(home, ".local", "bin", "whisper-cli"),
+		"/usr/local/bin/whisper-cli",
+		"/usr/bin/whisper-cli",
+	} {
+		if fileExists(p) {
+			return p
+		}
+	}
+	return ""
 }
 
 func availableModels(dir string) []string {

@@ -218,17 +218,22 @@ func toInts(ss []string) []int {
 }
 
 func buildTranscriber(bin, model, ffmpeg, lang string) (cli.Transcriber, func()) {
+	bin = cli.ResolveWhisper(bin)
+	if bin == "" || !fileExists(model) {
+		return nil, func() {}
+	}
+	isServer := filepath.Base(bin) == "whisper-server"
+	serverBin := bin
+	if !isServer {
+		serverBin = filepath.Join(filepath.Dir(bin), "whisper-server")
+	}
 	// предпочитаем whisper-server: модель грузится один раз
-	serverBin := filepath.Join(filepath.Dir(bin), "whisper-server")
-	if fileExists(serverBin) && fileExists(model) {
+	if isServer || fileExists(serverBin) {
 		ws := &transcribe.WhisperServer{Bin: serverBin, Model: model, FFmpeg: ffmpeg, Lang: lang}
 		return ws.Transcribe, func() { _ = ws.Close() }
 	}
-	if fileExists(bin) && fileExists(model) {
-		w := transcribe.Whisper{Bin: bin, Model: model, FFmpeg: ffmpeg, Lang: lang}
-		return w.Transcribe, func() {}
-	}
-	return nil, func() {}
+	w := transcribe.Whisper{Bin: bin, Model: model, FFmpeg: ffmpeg, Lang: lang}
+	return w.Transcribe, func() {}
 }
 
 func configDir() string {
