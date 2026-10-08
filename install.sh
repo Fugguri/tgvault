@@ -31,8 +31,33 @@ case ":$PATH:" in
   *) echo "добавь в PATH: export PATH=\"$BIN_DIR:\$PATH\"" ;;
 esac
 
-# скилл для агентов (если есть соответствующие каталоги)
+# скилл для агентов + замена старого Python-скилла tg-import
 skill_url="https://raw.githubusercontent.com/${REPO}/main/SKILL.md"
+
+legacy=""
+for d in "$HOME/.claude/skills/tg-import" "$HOME/.config/opencode/skills/tg-import"; do
+  [ -d "$d" ] && legacy="$legacy $d"
+done
+if [ -n "$legacy" ]; then
+  ans=n
+  if [ -r /dev/tty ]; then
+    printf "Найден старый скилл tg-import (Python). Заменить на tgvault? [y/N] " >/dev/tty
+    read -r ans </dev/tty || ans=n
+  fi
+  case "$ans" in
+    [yY]*)
+      mkdir -p "$HOME/.config/tgvault/legacy-skills"
+      for d in $legacy; do
+        base="$(basename "$(dirname "$d")")-tg-import"
+        cp -r "$d" "$HOME/.config/tgvault/legacy-skills/$base" 2>/dev/null || true
+        rm -rf "$d"
+      done
+      echo "✓ старый tg-import убран (бэкап: ~/.config/tgvault/legacy-skills)"
+      ;;
+    *) echo "• старый tg-import оставлен как есть" ;;
+  esac
+fi
+
 for d in "$HOME/.claude/skills/tgvault" "$HOME/.config/opencode/skills/tgvault"; do
   if [ -d "$(dirname "$d")" ]; then
     mkdir -p "$d"
