@@ -48,7 +48,7 @@ if [ -n "$legacy" ]; then
     [yY]*)
       mkdir -p "$HOME/.config/tgvault/legacy-skills"
       for d in $legacy; do
-        base="$(basename "$(dirname "$d")")-tg-import"
+        base="$(printf '%s' "${d#"$HOME"/}" | tr '/' '-')"
         cp -r "$d" "$HOME/.config/tgvault/legacy-skills/$base" 2>/dev/null || true
         rm -rf "$d"
       done
