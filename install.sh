@@ -33,7 +33,7 @@ esac
 
 # скилл для агентов (если есть соответствующие каталоги)
 skill_url="https://raw.githubusercontent.com/${REPO}/main/SKILL.md"
-for d in "$HOME/.claude/skills/tg-import" "$HOME/.config/opencode/skills/tg-import"; do
+for d in "$HOME/.claude/skills/tgvault" "$HOME/.config/opencode/skills/tgvault"; do
   if [ -d "$(dirname "$d")" ]; then
     mkdir -p "$d"
     if curl -fsSL "$skill_url" -o "$d/SKILL.md"; then
