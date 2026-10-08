@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Установка tgvault одной строкой:
-#   curl -fsSL https://raw.githubusercontent.com/<REPO>/main/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/Fugguri/tgvault/main/install.sh | bash
 set -euo pipefail
 
 REPO="${TGIMPORT_REPO:-Fugguri/tgvault}"
