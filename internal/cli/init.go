@@ -3,8 +3,10 @@ package cli
 import (
 	"context"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strconv"
+	"time"
 
 	"github.com/charmbracelet/huh"
 	"github.com/gotd/td/telegram"
@@ -16,6 +18,32 @@ import (
 // Init запускает интерактивный мастер проекта: вопросы, выбор чатов и
 // топиков (с поиском), выбор дефолтных записей, запись .tg-import.json.
 func Init(ctx context.Context, client *telegram.Client, dir string) error {
+	// если конфиг уже есть — спросим, что делать (дополнить/перезаписать/отмена)
+	cfgPath := filepath.Join(dir, config.Path)
+	mode := "new"
+	if raw, err := os.ReadFile(cfgPath); err == nil {
+		if config.IsV1(raw) {
+			return fmt.Errorf("найден старый конфиг v1 (%s) — выполни `tgvault migrate`", cfgPath)
+		}
+		var m string
+		if err := huh.NewForm(huh.NewGroup(
+			huh.NewSelect[string]().
+				Title("Конфиг уже существует — что делаем?").
+				Options(
+					huh.NewOption("Дополнить (сохранить существующие записи)", "merge"),
+					huh.NewOption("Перезаписать (со старым сделаю бэкап)", "replace"),
+					huh.NewOption("Отмена", "cancel"),
+				).Value(&m),
+		)).Run(); err != nil {
+			return err
+		}
+		mode = m
+	}
+	if mode == "cancel" {
+		fmt.Println("отменено")
+		return nil
+	}
+
 	project := filepath.Base(dir)
 	out := "docs/telegram_chats"
 
@@ -125,6 +153,21 @@ func Init(ctx context.Context, client *telegram.Client, dir string) error {
 		}
 	}
 
+	// применяем режим к существующему конфигу
+	bakPath := ""
+	switch mode {
+	case "replace":
+		b, err := backupFile(cfgPath)
+		if err != nil {
+			return err
+		}
+		bakPath = b
+	case "merge":
+		if old, _, err := config.Load(dir); err == nil {
+			entries = mergeEntries(old.Entries, entries)
+		}
+	}
+
 	cfg := &config.Config{Project: project, Out: out, Entries: entries}
 	path, err := config.Save(dir, cfg)
 	if err != nil {
@@ -132,7 +175,39 @@ func Init(ctx context.Context, client *telegram.Client, dir string) error {
 	}
 	fmt.Printf("✓ конфиг: %s\n  проект: %s\n  раскладка: %s\n  записей: %d (дефолтных: %d)\n",
 		path, project, out, len(entries), len(defs))
+	if bakPath != "" {
+		fmt.Printf("  бэкап старого: %s\n", bakPath)
+	}
 	return nil
+}
+
+func backupFile(path string) (string, error) {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return "", err
+	}
+	bak := path + ".bak-" + time.Now().Format("20060102-150405")
+	if err := os.WriteFile(bak, b, 0o644); err != nil {
+		return "", err
+	}
+	return bak, nil
+}
+
+// mergeEntries: существующие записи + новые, которых ещё нет (по chat_id+topic_id).
+func mergeEntries(existing, added []config.Entry) []config.Entry {
+	key := func(e config.Entry) string { return fmt.Sprintf("%d:%d", e.ChatID, e.TopicID) }
+	seen := map[string]bool{}
+	out := append([]config.Entry{}, existing...)
+	for _, e := range existing {
+		seen[key(e)] = true
+	}
+	for _, e := range added {
+		if !seen[key(e)] {
+			out = append(out, e)
+			seen[key(e)] = true
+		}
+	}
+	return out
 }
 
 func entryFor(p tgx.Peer, t *tgx.Topic) config.Entry {
