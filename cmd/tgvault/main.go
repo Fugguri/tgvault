@@ -5,8 +5,10 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -16,13 +18,16 @@ import (
 
 	"github.com/Fugguri/tgvault/internal/cli"
 	"github.com/Fugguri/tgvault/internal/config"
+	"github.com/Fugguri/tgvault/internal/secrets"
 	"github.com/Fugguri/tgvault/internal/tgclient"
 	"github.com/Fugguri/tgvault/internal/transcribe"
+	"github.com/Fugguri/tgvault/internal/update"
 )
 
-func main() {
-	loadEnv()
+// version подставляется на релизе через -ldflags "-X main.version=…".
+var version = "dev"
 
+func main() {
 	// Команду ищем как первый аргумент из известных; остальное — флаги.
 	cmd := "login"
 	rest := os.Args[1:]
@@ -32,6 +37,12 @@ func main() {
 			rest = append(append([]string{}, rest[:i]...), rest[i+1:]...)
 			break
 		}
+	}
+
+	// Ссылки на секреты подставляем до чтения флагов. Для команд, которым ключи
+	// не нужны (secret/update), отсутствие секрета не фатально.
+	if err := loadEnv(needsKeys(cmd)); err != nil {
+		die("%v", err)
 	}
 
 	var (
@@ -66,16 +77,20 @@ func main() {
 		addWriteTo = flag.String("write-to", "", "add: кому писать")
 		addOut     = flag.String("out", "", "add: корень раскладки (для нового конфига)")
 
+		// secret / update
+		forceFlag   = flag.Bool("force", false, "secret set: перезаписать; update: переустановить")
+		updateCheck = flag.Bool("check", false, "update: только проверить, не устанавливать")
+
 		// send
-		sendChat   = flag.String("chat", "", "send: имя чата")
-		sendID     = flag.Int64("id", 0, "send: id чата")
-		sendAlias  = flag.String("alias", "", "send: alias/slug из конфига")
-		sendSelf   = flag.Bool("self", false, "send: Saved Messages (Избранное)")
-		sendText   = flag.String("text", "", "send: текст ('-' = stdin)")
-		sendTextF  = flag.String("text-file", "", "send: текст из файла")
-		sendReply  = flag.Int("reply-to", 0, "send: msg_id для ответа")
-		sendEdit   = flag.Int("edit", 0, "send: msg_id для редактирования")
-		sendDo     = flag.Bool("send", false, "send: ВЫПОЛНИТЬ (иначе dry-run)")
+		sendChat  = flag.String("chat", "", "send: имя чата")
+		sendID    = flag.Int64("id", 0, "send: id чата")
+		sendAlias = flag.String("alias", "", "send: alias/slug из конфига")
+		sendSelf  = flag.Bool("self", false, "send: Saved Messages (Избранное)")
+		sendText  = flag.String("text", "", "send: текст ('-' = stdin)")
+		sendTextF = flag.String("text-file", "", "send: текст из файла")
+		sendReply = flag.Int("reply-to", 0, "send: msg_id для ответа")
+		sendEdit  = flag.Int("edit", 0, "send: msg_id для редактирования")
+		sendDo    = flag.Bool("send", false, "send: ВЫПОЛНИТЬ (иначе dry-run)")
 	)
 	var sendFiles, sendDeletes stringSlice
 	flag.Var(&sendFiles, "file", "send: файл/медиа (можно несколько)")
@@ -91,6 +106,9 @@ func main() {
 	)
 	flag.Var(&botSteps, "step", "bot: шаг send:/start | click:Текст | expect:Текст | expect-doc | sleep:2")
 
+	// Значения по умолчанию могут быть подставленными секретами — прячем их в usage.
+	flag.CommandLine.SetOutput(maskWriter{os.Stderr})
+	flag.Usage = usage
 	flag.CommandLine.Parse(rest)
 
 	ctx := context.Background()
@@ -118,6 +136,18 @@ func main() {
 	if cmd == "list" {
 		wd, _ := os.Getwd()
 		if err := cli.List(wd); err != nil {
+			die("%v", err)
+		}
+		return
+	}
+	if cmd == "secret" {
+		if err := cli.Secret(flag.Args(), *forceFlag); err != nil {
+			die("%v", err)
+		}
+		return
+	}
+	if cmd == "update" {
+		if err := cli.Update(ctx, version, *updateCheck, *forceFlag); err != nil {
 			die("%v", err)
 		}
 		return
@@ -208,11 +238,12 @@ func main() {
 	if err != nil {
 		die("%v", err)
 	}
+	updateNotice(ctx, version)
 }
 
 var commands = map[string]bool{
 	"login": true, "init": true, "import": true, "migrate": true,
-	"setup": true, "list": true, "add": true, "send": true, "bot": true, "dialogs": true, "topics": true, "voice": true,
+	"setup": true, "list": true, "add": true, "send": true, "bot": true, "dialogs": true, "topics": true, "voice": true, "secret": true, "update": true,
 }
 
 type stringSlice []string
@@ -261,18 +292,60 @@ func defaultSession() string {
 	return filepath.Join(configDir(), "session.json")
 }
 
-func loadEnv() {
+func loadEnv(strict bool) error {
 	// глобальный .env (ключи, пути к whisper) — приоритетнее локального
 	_ = godotenv.Load(filepath.Join(configDir(), ".env"))
 	dir, _ := os.Getwd()
+	found := false
 	for i := 0; i < 6 && dir != "" && dir != "/"; i++ {
 		if p := filepath.Join(dir, ".env"); fileExists(p) {
 			_ = godotenv.Load(p)
-			return
+			found = true
+			break
 		}
 		dir = filepath.Dir(dir)
 	}
-	_ = godotenv.Load()
+	if !found {
+		_ = godotenv.Load()
+	}
+	if err := secrets.Default().ExpandEnv(); err != nil {
+		if strict {
+			return fmt.Errorf("%w\n  заведи секрет: tgvault secret set NAME", err)
+		}
+	}
+	return nil
+}
+
+// needsKeys — командам, которые работают с Telegram, нужны валидные ключи.
+func needsKeys(cmd string) bool {
+	switch cmd {
+	case "secret", "update", "list", "setup":
+		return false
+	}
+	return true
+}
+
+// updateNotice раз в сутки (и то best-effort) напоминает, что вышел релиз.
+// Не тянет обновление само — только ссылку, чтобы не запускать update вслепую.
+func updateNotice(ctx context.Context, version string) {
+	if os.Getenv("TGVAULT_NO_UPDATE_CHECK") != "" {
+		return
+	}
+	stamp := filepath.Join(configDir(), ".update-check")
+	if info, err := os.Stat(stamp); err == nil && time.Since(info.ModTime()) < 24*time.Hour {
+		return
+	}
+	_ = os.MkdirAll(filepath.Dir(stamp), 0o700)
+	_ = os.WriteFile(stamp, nil, 0o644)
+	cctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	rel, err := update.Fetch(cctx, update.DefaultRepo, runtime.GOOS, runtime.GOARCH)
+	if err != nil {
+		return
+	}
+	if update.Newer(rel.Tag, version) {
+		fmt.Fprintf(os.Stderr, "• доступна версия %s (у тебя %s): tgvault update\n", rel.Tag, update.Normalize(version))
+	}
 }
 
 func fileExists(p string) bool {
@@ -296,6 +369,45 @@ func atoiOr(s string) int {
 }
 
 func die(format string, a ...any) {
-	fmt.Fprintf(os.Stderr, "ошибка: "+format+"\n", a...)
+	msg := secrets.Default().Mask(fmt.Sprintf(format, a...))
+	fmt.Fprintln(os.Stderr, "ошибка: "+msg)
 	os.Exit(1)
+}
+
+// maskWriter затирает секреты по ссылкам во всём, что пишется в поток
+// (например, в выводе флагов по умолчанию).
+type maskWriter struct{ w io.Writer }
+
+func (m maskWriter) Write(p []byte) (int, error) {
+	if _, err := io.WriteString(m.w, secrets.Default().Mask(string(p))); err != nil {
+		return 0, err
+	}
+	return len(p), nil
+}
+
+// usage печатает список команд и флаги (через maskWriter — без значений секретов).
+func usage() {
+	out := flag.CommandLine.Output()
+	fmt.Fprint(out, `tgvault — импорт Telegram-чатов в Markdown.
+
+Использование:
+  tgvault <команда> [флаги]
+
+Команды:
+  login              вход в Telegram (сессия глобальная)
+  setup              мастер установки: модели, зависимости, ключи
+  init / add         конфиг проекта (init — интерактивно, add — для агентов)
+  import             импорт по конфигу (-all, -entry, -from/-to, -full)
+  migrate            старый конфиг v1 → v2
+  list               сводка записей проекта
+  dialogs / topics   список диалогов / форум-топиков
+  voice              найти и транскрибировать голосовое
+  send               отправить/править/удалить сообщение
+  bot                клик-тест бота
+  secret             хранилище ключей: set|ls|ref|rm|check
+  update             обновление до свежего релиза (-check — только проверить)
+
+Флаги:
+`)
+	flag.PrintDefaults()
 }

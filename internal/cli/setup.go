@@ -12,6 +12,8 @@ import (
 
 	"github.com/charmbracelet/huh"
 	"github.com/joho/godotenv"
+
+	"github.com/Fugguri/tgvault/internal/secrets"
 )
 
 type modelDef struct {
@@ -148,22 +150,30 @@ func Setup(ctx context.Context, opt SetupOpts) error {
 		}
 	}
 
-	// 5. запись глобального .env
+	// 5. запись глобального .env: ключи — ссылками на хранилище
+	st := secrets.Default()
 	env := map[string]string{
 		"WHISPER_BIN":   whisperBin,
 		"WHISPER_MODEL": filepath.Join(modelsDir, "ggml-"+def+".bin"),
 		"FFMPEG":        "ffmpeg",
 	}
 	if apiID != "" {
-		env["TG_API_ID"] = apiID
+		if err := st.Set("TG_API_ID", apiID, true); err != nil {
+			return err
+		}
+		env["TG_API_ID"] = st.Tag("TG_API_ID")
 	}
 	if apiHash != "" {
-		env["TG_API_HASH"] = apiHash
+		if err := st.Set("TG_API_HASH", apiHash, true); err != nil {
+			return err
+		}
+		env["TG_API_HASH"] = st.Tag("TG_API_HASH")
 	}
 	if err := upsertEnv(filepath.Join(cfgDir, ".env"), env); err != nil {
 		return err
 	}
-	fmt.Printf("✓ глобальный конфиг: %s\n  модель: %s\n  дальше: tgvault login\n", filepath.Join(cfgDir, ".env"), def)
+	fmt.Printf("✓ глобальный конфиг: %s\n  модель: %s\n  секреты: %s\n  дальше: tgvault login\n",
+		filepath.Join(cfgDir, ".env"), def, st.Root)
 	return nil
 }
 
