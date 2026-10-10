@@ -10,7 +10,7 @@ package transcribe
 #cgo CFLAGS: -I${SRCDIR}/../../third_party/whisper.cpp/include -I${SRCDIR}/../../third_party/whisper.cpp/ggml/include
 #cgo LDFLAGS: -L${SRCDIR}/../../third_party/whisper.cpp/build_go/src -L${SRCDIR}/../../third_party/whisper.cpp/build_go/ggml/src -lwhisper -lggml -lggml-base -lggml-cpu -lstdc++ -lm
 #cgo linux LDFLAGS: -fopenmp
-#cgo darwin LDFLAGS: -lggml-metal -lggml-blas -framework Accelerate -framework Foundation -framework Metal -framework MetalKit -framework CoreGraphics
+#cgo darwin LDFLAGS: -L${SRCDIR}/../../third_party/whisper.cpp/build_go/ggml/src/ggml-metal -L${SRCDIR}/../../third_party/whisper.cpp/build_go/ggml/src/ggml-blas -lggml-metal -lggml-blas -framework Accelerate -framework Foundation -framework Metal -framework MetalKit -framework CoreGraphics
 
 #include <whisper.h>
 #include <stdlib.h>
