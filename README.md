@@ -15,7 +15,7 @@ curl -fsSL https://raw.githubusercontent.com/Fugguri/tgvault/main/install.sh | b
 Ставит `tgvault` в `~/.local/bin` и `SKILL.md` в каталоги агентов. Дальше:
 
 ```bash
-tgvault setup      # whisper-cli, модели, Telegram api_id/api_hash -> ~/.config/tgvault/.env
+tgvault setup      # модели, Telegram api_id/api_hash -> ~/.config/tgvault/.env
 tgvault login      # вход в Telegram (один раз, сессия глобальная)
 ```
 
@@ -25,29 +25,31 @@ tgvault login      # вход в Telegram (один раз, сессия гло�
   `docs/telegram_chats/<chat>_<topic>/upd_<день>/_log.md`.
 - **Инкрементально** — тянет только новые сообщения (watermark), правки/удаления — через `-full`.
 - **Медиа** — фото, документы, голосовые скачиваются в `<slug>/files/`, привязаны к сообщению.
-- **Транскрибация** голосовых локально (whisper.cpp, `whisper-server`), без сети.
+- **Транскрибация** голосовых локально (whisper.cpp вшит в бинарь), без сети,
+  модель грузится в процесс один раз.
 - **Справочник чатов** в конфиге проекта: что за чат, когда идти, кому писать.
 - **Отправка** `send`/`edit`/`delete` (dry-run по умолчанию).
 - **Клик-тест ботов** `bot` (шаги send/click/expect, защита от необратимых кнопок).
 
 ## Требования
 
-- `ffmpeg` (ogg → wav).
-- `whisper.cpp` — бинарь `whisper-cli`/`whisper-server`. `tgvault setup` умеет
-  собрать его из исходников автоматически (нужны `git` и `cmake`), либо укажите
-  готовый путь через `WHISPER_BIN`.
+- `ffmpeg` (декодирование ogg/opus перед распознаванием).
+- Для сборки из исходников: `cmake`, `gcc`/`clang` (cgo) — `make build` сам
+  соберёт статический whisper.cpp и вшит его в `tgvault`. Внешний `whisper-cli`
+  не нужен.
 
 ## Сборка
 
 ```bash
-make build          # -> ./tgvault
-make cross          # релизы под linux/macOS/windows (amd64/arm64)
+make build          # собирает whisper.cpp (static) и tgvault -> ./tgvault
 ```
+
+Релизы собираются нативно под каждую ОС/арх (см. `.github/workflows/release.yml`).
 
 ## Быстрый старт
 
 ```bash
-./tgvault setup                 # мастер: whisper-cli, модели, TG api_id/api_hash -> глобальный .env
+./tgvault setup                 # мастер: модели, TG api_id/api_hash -> глобальный .env
 ./tgvault login                 # вход в Telegram (один раз, сессия глобальная)
 cd ~/projects/my-project
 ../../tgvault init              # мастер: чаты, топики, справочник -> .tg-import.json
@@ -61,7 +63,7 @@ cd ~/projects/my-project
 
 ```bash
 ./tgvault -unattended -models base,tiny -default-model base \
-    -api-id <ID> -api-hash <HASH> -build-whisper setup
+    -api-id <ID> -api-hash <HASH> setup
 ```
 
 ## Команды
@@ -153,6 +155,9 @@ tgvault update -check  # только показать, что доступно
 вместо транскрипта сначала идёт плейсхолдер `🎤 (транскрибируется…)`, воркер
 распознаёт и **обновляет секцию на месте** (атомарно, под мьютексом на файл).
 Так импорт не блокируется на распознавании, а файл постепенно «оживает».
+
+Модель whisper грузится в процесс **один раз** (whisper.cpp вшит через cgo),
+лентяво при первом голосовом, и переиспользуется для всех в очереди.
 
 ## Планы (будущее)
 

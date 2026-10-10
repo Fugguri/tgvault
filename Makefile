@@ -1,24 +1,41 @@
 BINARY := tgvault
 
-.PHONY: build run test vet tidy cross clean
+# whisper.cpp вшивается в бинарь через cgo (см. internal/transcribe/native.go).
+WHISPER_DIR    := third_party/whisper.cpp
+WHISPER_BUILD  := $(WHISPER_DIR)/build_go
+# GGML_NATIVE=ON — быстрее на машине сборки; для релизных бинарей ставь OFF
+# (переносимость между CPU): make whisper-libs WHISPER_GGML_NATIVE=OFF
+WHISPER_GGML_NATIVE ?= ON
 
-build:
+.PHONY: build whisper-libs run test vet tidy clean
+
+# Собрать статические библиотеки whisper.cpp под текущую систему.
+whisper-libs:
+	@if [ ! -d "$(WHISPER_DIR)" ]; then \
+		git clone --depth 1 https://github.com/ggml-org/whisper.cpp "$(WHISPER_DIR)"; \
+	fi
+	cmake -S $(WHISPER_DIR) -B $(WHISPER_BUILD) \
+		-DCMAKE_BUILD_TYPE=Release \
+		-DBUILD_SHARED_LIBS=OFF \
+		-DGGML_NATIVE=$(WHISPER_GGML_NATIVE) \
+		-DWHISPER_BUILD_TESTS=OFF \
+		-DWHISPER_BUILD_EXAMPLES=OFF
+	cmake --build $(WHISPER_BUILD) --target whisper -j
+
+build: whisper-libs
 	go build -o $(BINARY) ./cmd/tgvault
 
-vet:
+run: build
+	./$(BINARY)
+
+vet: whisper-libs
 	go vet ./...
 
 tidy:
 	go mod tidy
 
-test:
+test: whisper-libs
 	go test ./...
 
-cross:
-	CGO_ENABLED=0 GOOS=linux  GOARCH=amd64 go build -o dist/$(BINARY)_linux_amd64  ./cmd/tgvault
-	CGO_ENABLED=0 GOOS=linux  GOARCH=arm64 go build -o dist/$(BINARY)_linux_arm64  ./cmd/tgvault
-	CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -o dist/$(BINARY)_darwin_amd64 ./cmd/tgvault
-	CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -o dist/$(BINARY)_darwin_arm64 ./cmd/tgvault
-
 clean:
-	rm -rf dist $(BINARY)
+	rm -rf dist $(BINARY) $(WHISPER_BUILD)

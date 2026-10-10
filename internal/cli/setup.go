@@ -29,17 +29,16 @@ var whisperModels = []modelDef{
 
 // SetupOpts — параметры установки (для неинтерактивного режима).
 type SetupOpts struct {
-	WhisperBin   string
-	Unattended   bool
-	Models       []string
-	Default      string
-	APIID        string
-	APIHash      string
-	BuildWhisper bool
+	Unattended bool
+	Models     []string
+	Default    string
+	APIID      string
+	APIHash    string
 }
 
-// Setup — установочный мастер: deps, whisper-cli, модели, Telegram-ключи,
+// Setup — установочный мастер: зависимости, модели, Telegram-ключи,
 // глобальный .env (~/.config/tgvault/.env). При opt.Unattended не спрашивает.
+// Распознавание вшито в бинарь (cgo) — whisper-cli не нужен, только модель.
 func Setup(ctx context.Context, opt SetupOpts) error {
 	cfgDir := configDir()
 	dataDir := filepath.Join(userDataDir(), "tgvault")
@@ -47,37 +46,9 @@ func Setup(ctx context.Context, opt SetupOpts) error {
 	_ = os.MkdirAll(modelsDir, 0o755)
 
 	fmt.Println("Проверка зависимостей:")
-	checkBin("ffmpeg", "нужен для ogg→wav")
+	checkBin("ffmpeg", "нужен для декодирования ogg/opus")
 
-	// 1. whisper-cli (авто-резолв: env → ранее собранный → PATH → типовые пути)
-	whisperBin := ResolveWhisper(opt.WhisperBin)
-	if whisperBin != "" {
-		fmt.Printf("  ✓ whisper-cli: %s\n", whisperBin)
-	} else {
-		fmt.Println("whisper-cli не найден.")
-		whisperBin = filepath.Join(dataDir, "whisper", "build", "bin", "whisper-cli")
-		build := opt.BuildWhisper
-		if !opt.Unattended {
-			if err := huh.NewForm(huh.NewGroup(
-				huh.NewConfirm().
-					Title("Собрать whisper.cpp из исходников? (нужны git и cmake)").
-					Affirmative("Собрать").Negative("Пропустить").Value(&build),
-			)).Run(); err != nil {
-				return err
-			}
-		}
-		if build {
-			p, err := buildWhisper(ctx, filepath.Join(dataDir, "whisper"))
-			if err != nil {
-				fmt.Printf("  ⚠ сборка не удалась: %v\n", err)
-			} else {
-				whisperBin = p
-				fmt.Printf("  ✓ собран: %s\n", p)
-			}
-		}
-	}
-
-	// 2. модели
+	// 1. модели
 	picked := opt.Models
 	if !opt.Unattended {
 		var sel []string
@@ -100,7 +71,7 @@ func Setup(ctx context.Context, opt SetupOpts) error {
 		downloadModel(ctx, modelsDir, name)
 	}
 
-	// 3. модель по умолчанию
+	// 2. модель по умолчанию
 	def := opt.Default
 	if def == "" {
 		if len(picked) > 0 {
@@ -126,7 +97,7 @@ func Setup(ctx context.Context, opt SetupOpts) error {
 		downloadModel(ctx, modelsDir, def)
 	}
 
-	// 4. Telegram-ключи
+	// 3. Telegram-ключи
 	cur, _ := godotenv.Read(filepath.Join(cfgDir, ".env"))
 	apiID := opt.APIID
 	apiHash := opt.APIHash
@@ -148,10 +119,9 @@ func Setup(ctx context.Context, opt SetupOpts) error {
 		}
 	}
 
-	// 5. запись глобального .env: значения как есть — бинарь читает их напрямую,
+	// 4. запись глобального .env: значения как есть — бинарь читает их напрямую,
 	// а от LLM они прячутся маскировкой в выводе (см. secrets.MaskEnv).
 	env := map[string]string{
-		"WHISPER_BIN":   whisperBin,
 		"WHISPER_MODEL": filepath.Join(modelsDir, "ggml-"+def+".bin"),
 		"FFMPEG":        "ffmpeg",
 	}
@@ -168,39 +138,6 @@ func Setup(ctx context.Context, opt SetupOpts) error {
 	return nil
 }
 
-func buildWhisper(ctx context.Context, dir string) (string, error) {
-	if _, err := exec.LookPath("git"); err != nil {
-		return "", fmt.Errorf("нет git")
-	}
-	if _, err := exec.LookPath("cmake"); err != nil {
-		return "", fmt.Errorf("нет cmake")
-	}
-	if _, err := os.Stat(filepath.Join(dir, ".git")); err != nil {
-		if err := run(ctx, "", "git", "clone", "--depth", "1", "https://github.com/ggml-org/whisper.cpp", dir); err != nil {
-			return "", err
-		}
-	}
-	if err := run(ctx, dir, "cmake", "-B", "build", "-DCMAKE_BUILD_TYPE=Release", "-DWHISPER_BUILD_TESTS=OFF", "-DWHISPER_BUILD_SERVER=ON"); err != nil {
-		return "", err
-	}
-	if err := run(ctx, dir, "cmake", "--build", "build", "-j"); err != nil {
-		return "", err
-	}
-	bin := filepath.Join(dir, "build", "bin", "whisper-cli")
-	if !fileExists(bin) {
-		return "", fmt.Errorf("whisper-cli не появился после сборки")
-	}
-	return bin, nil
-}
-
-func run(ctx context.Context, dir, name string, args ...string) error {
-	cmd := exec.CommandContext(ctx, name, args...)
-	cmd.Dir = dir
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
-}
-
 func checkBin(name, why string) {
 	if p, err := exec.LookPath(name); err == nil {
 		fmt.Printf("  ✓ %s: %s\n", name, p)
@@ -212,35 +149,6 @@ func checkBin(name, why string) {
 func fileExists(p string) bool {
 	_, err := os.Stat(p)
 	return err == nil
-}
-
-// ResolveWhisper ищет whisper-cli: явный путь → ранее собранный → PATH → типовые пути.
-func ResolveWhisper(explicit string) string {
-	if explicit != "" && fileExists(explicit) {
-		if abs, err := filepath.Abs(explicit); err == nil {
-			return abs
-		}
-		return explicit
-	}
-	if p := filepath.Join(userDataDir(), "tgvault", "whisper", "build", "bin", "whisper-cli"); fileExists(p) {
-		return p
-	}
-	for _, n := range []string{"whisper-cli", "whisper-server"} {
-		if p, err := exec.LookPath(n); err == nil {
-			return p
-		}
-	}
-	home, _ := os.UserHomeDir()
-	for _, p := range []string{
-		filepath.Join(home, ".local", "bin", "whisper-cli"),
-		"/usr/local/bin/whisper-cli",
-		"/usr/bin/whisper-cli",
-	} {
-		if fileExists(p) {
-			return p
-		}
-	}
-	return ""
 }
 
 func availableModels(dir string) []string {

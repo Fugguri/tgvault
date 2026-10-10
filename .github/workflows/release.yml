@@ -9,18 +9,42 @@ permissions:
   contents: write
 
 jobs:
-  goreleaser:
-    runs-on: ubuntu-latest
+  build:
+    # cgo + статическая линковка whisper.cpp: каждый бинарь собирается нативно
+    # под свою ОС/арх (кросс-компиляция cgo невозможна без кросс-тулчейна).
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            goos: linux
+            goarch: amd64
+            asset: tgvault_linux_amd64
+          - os: macos-13
+            goos: darwin
+            goarch: amd64
+            asset: tgvault_darwin_amd64
+          - os: macos-14
+            goos: darwin
+            goarch: arm64
+            asset: tgvault_darwin_arm64
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-      - uses: goreleaser/goreleaser-action@v6
-        with:
-          version: latest
-          args: release --clean --parallelism 1
+      - name: Build whisper.cpp (static)
+        run: make whisper-libs WHISPER_GGML_NATIVE=OFF
+      - name: Build tgvault
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: "1"
+        run: |
+          go build -ldflags "-s -w -X main.version=${GITHUB_REF_NAME}" \
+            -o ${{ matrix.asset }} ./cmd/tgvault
+      - name: Upload to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ matrix.asset }}

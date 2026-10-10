@@ -51,7 +51,6 @@ func main() {
 		phone      = flag.String("phone", env("TG_PHONE"), "phone (+7...)")
 		password   = flag.String("password", env("TG_2FA"), "2FA password (optional)")
 		sessionPt  = flag.String("session", env("TG_SESSION", defaultSession()), "session file")
-		whisperBin = flag.String("whisper-bin", env("WHISPER_BIN", "third_party/whisper.cpp/build/bin/whisper-cli"), "whisper-cli path")
 		whisperMdl = flag.String("whisper-model", env("WHISPER_MODEL", "models/ggml-base.bin"), "ggml model path")
 		ffmpegPt   = flag.String("ffmpeg", env("FFMPEG", "ffmpeg"), "ffmpeg path")
 		lang       = flag.String("lang", env("LANG_ASR", "ru"), "transcription language")
@@ -65,10 +64,9 @@ func main() {
 		newOut     = flag.String("new-out", "", "migrate: новый корень (default docs/telegram_chats)")
 
 		// setup (неинтерактивный режим)
-		setupModels     = flag.String("models", "", "setup: модели через запятую (tiny,base,...)")
-		setupDefault    = flag.String("default-model", "", "setup: модель по умолчанию")
-		setupUnattend   = flag.Bool("unattended", false, "setup: без вопросов")
-		setupBuildWhisp = flag.Bool("build-whisper", false, "setup: собрать whisper.cpp, если нет")
+		setupModels   = flag.String("models", "", "setup: модели через запятую (tiny,base,...)")
+		setupDefault  = flag.String("default-model", "", "setup: модель по умолчанию")
+		setupUnattend = flag.Bool("unattended", false, "setup: без вопросов")
 
 		// add (неинтерактивное добавление записи)
 		addDefault = flag.Bool("default", false, "add: импортировать каждый раз")
@@ -117,11 +115,9 @@ func main() {
 	// команды без Telegram-сессии
 	if cmd == "setup" {
 		opt := cli.SetupOpts{
-			WhisperBin:   *whisperBin,
-			Unattended:   *setupUnattend,
-			Default:      *setupDefault,
-			APIHash:      *apiHash,
-			BuildWhisper: *setupBuildWhisp,
+			Unattended: *setupUnattend,
+			Default:    *setupDefault,
+			APIHash:    *apiHash,
 		}
 		if *apiID > 0 {
 			opt.APIID = strconv.Itoa(*apiID)
@@ -167,7 +163,7 @@ func main() {
 		die("session dir: %v", err)
 	}
 
-	tr, cleanup := buildTranscriber(*whisperBin, *whisperMdl, *ffmpegPt, *lang)
+	tr, cleanup := buildTranscriber(*whisperMdl, *ffmpegPt, *lang)
 	defer cleanup()
 
 	cfg := tgclient.Config{
@@ -263,23 +259,36 @@ func toInts(ss []string) []int {
 	return out
 }
 
-func buildTranscriber(bin, model, ffmpeg, lang string) (cli.Transcriber, func()) {
-	bin = cli.ResolveWhisper(bin)
-	if bin == "" || !fileExists(model) {
+// buildTranscriber собирает транскрибер: whisper.cpp вшит в бинарь (cgo),
+// модель грузится в процесс один раз. Внешний whisper-cli не нужен.
+func buildTranscriber(model, ffmpeg, lang string) (cli.Transcriber, func()) {
+	model = resolveModel(model)
+	if !fileExists(model) {
 		return nil, func() {}
 	}
-	isServer := filepath.Base(bin) == "whisper-server"
-	serverBin := bin
-	if !isServer {
-		serverBin = filepath.Join(filepath.Dir(bin), "whisper-server")
+	nt := &transcribe.Native{Model: model, FFmpeg: ffmpeg, Lang: lang}
+	return nt.Transcribe, func() { _ = nt.Close() }
+}
+
+// resolveModel ищет модель: явный путь → глобальный каталог setup (~/.local/share/tgvault/models).
+func resolveModel(p string) string {
+	if fileExists(p) {
+		return p
 	}
-	// предпочитаем whisper-server: модель грузится один раз
-	if isServer || fileExists(serverBin) {
-		ws := &transcribe.WhisperServer{Bin: serverBin, Model: model, FFmpeg: ffmpeg, Lang: lang}
-		return ws.Transcribe, func() { _ = ws.Close() }
+	base := filepath.Base(p)
+	dirs := []string{}
+	if d := os.Getenv("XDG_DATA_HOME"); d != "" {
+		dirs = append(dirs, filepath.Join(d, "tgvault", "models"))
 	}
-	w := transcribe.Whisper{Bin: bin, Model: model, FFmpeg: ffmpeg, Lang: lang}
-	return w.Transcribe, func() {}
+	if home, err := os.UserHomeDir(); err == nil {
+		dirs = append(dirs, filepath.Join(home, ".local", "share", "tgvault", "models"))
+	}
+	for _, d := range dirs {
+		if cand := filepath.Join(d, base); fileExists(cand) {
+			return cand
+		}
+	}
+	return p
 }
 
 func configDir() string {
