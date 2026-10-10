@@ -61,6 +61,7 @@ func main() {
 		fullReb    = flag.Bool("full", false, "import: полный пересбор логов")
 		fromStr    = flag.String("from", "", "import: с даты YYYY-MM-DD")
 		toStr      = flag.String("to", "", "import: по дату YYYY-MM-DD")
+		noSecrets  = flag.Bool("no-secrets", false, "import: не выносить токены из переписки")
 		newOut     = flag.String("new-out", "", "migrate: новый корень (default docs/telegram_chats)")
 
 		// setup (неинтерактивный режим)
@@ -200,12 +201,13 @@ func main() {
 			return cli.Migrate(ctx, c, wd, cli.MigrateOpts{NewOut: *newOut})
 		case "import":
 			return cli.Import(ctx, c, wd, cli.ImportOpts{
-				All:   *allEntries,
-				Entry: *entrySlug,
-				Full:  *fullReb,
-				From:  cli.ParseDate(*fromStr),
-				To:    cli.ParseDate(*toStr),
-				Tr:    tr,
+				All:      *allEntries,
+				Entry:    *entrySlug,
+				Full:     *fullReb,
+				NoRedact: *noSecrets,
+				From:     cli.ParseDate(*fromStr),
+				To:       cli.ParseDate(*toStr),
+				Tr:       tr,
 			})
 		case "dialogs":
 			return cli.Dialogs(ctx, c)
@@ -369,9 +371,15 @@ func atoiOr(s string) int {
 }
 
 func die(format string, a ...any) {
-	msg := secrets.Default().Mask(fmt.Sprintf(format, a...))
+	msg := maskText(fmt.Sprintf(format, a...))
 	fmt.Fprintln(os.Stderr, "ошибка: "+msg)
 	os.Exit(1)
+}
+
+// maskText прячет ключи от LLM: значения из хранилища и значения секретных
+// переменных окружения (.env). Сам бинарь читает .env как обычно.
+func maskText(s string) string {
+	return secrets.MaskEnv(secrets.Default().Mask(s))
 }
 
 // maskWriter затирает секреты по ссылкам во всём, что пишется в поток
@@ -379,7 +387,7 @@ func die(format string, a ...any) {
 type maskWriter struct{ w io.Writer }
 
 func (m maskWriter) Write(p []byte) (int, error) {
-	if _, err := io.WriteString(m.w, secrets.Default().Mask(string(p))); err != nil {
+	if _, err := io.WriteString(m.w, maskText(string(p))); err != nil {
 		return 0, err
 	}
 	return len(p), nil
@@ -404,7 +412,7 @@ func usage() {
   voice              найти и транскрибировать голосовое
   send               отправить/править/удалить сообщение
   bot                клик-тест бота
-  secret             хранилище ключей: set|ls|ref|rm|check
+  secret             хранилище ключей: set|ls|ref|rm|check|chat
   update             обновление до свежего релиза (-check — только проверить)
 
 Флаги:

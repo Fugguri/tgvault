@@ -76,40 +76,41 @@ cd ~/projects/my-project
 | `migrate` | перевод старого конфига v1 → v2 |
 | `dialogs` | список диалогов |
 | `topics "<чат>"` | форум-топики чата |
-| `secret` | хранилище ключей: `set`/`ls`/`ref`/`rm`/`check` (значения не печатаются) |
+| `secret` | секреты из чатов: `chat <slug> [NAME]` |
 | `update` | обновиться до свежего релиза (`-check` — только проверить) |
 | `send` | отправить/править/удалить (`-text`, `-file`, `-reply-to`, `-topic`, `-edit`, `-delete`, `-send`) |
 | `bot` | клик-тест бота (`-bot`, `-step send:/start`, `-step click:…`, `-go`) |
 
 ## Секреты
 
-Ключи (Telegram `api_hash`, токены) не лежат в `.env` открытым текстом.
-В `.env` идёт только ссылка, а значение — в отдельном хранилище:
+`.env` — конфиг самого бинаря: `TG_API_HASH`, `TG_API_ID`, `GEMINI_API_KEY` лежат
+там настоящими значениями, и `tgvault` читает их напрямую. Меняется не хранилище,
+а **вид текста для LLM**: всё, что бинарь печатает (список команд, ошибки, `-h`,
+сообщения), проходит через маскировку — значения переменных с «секретными»
+именами (`*API_HASH*`, `*API_KEY*`, `*API_ID*`, `*TOKEN*`, `*SECRET*`,
+`*PASSWORD*`, `*2FA*`, `PRIVATE_KEY`) заменяются на `{{secret:VAR}}`. Так ключ не
+попадает в контекст агента, а сам `tgvault` работает с `.env` как обычно.
+
+Пример: в `-h` строка `-api-hash` печатается как
+`(default "{{secret:TG_API_HASH}}")`, а не значением.
+
+## Секреты из чатов
+
+При `import` tgvault ищет в переписке токены и ключи и **выносит их из логов**:
+в `_log.md` остаётся ссылка `{{secret:<NAME>}}`, а значение — в
+`docs/telegram_chats/<slug>/.secrets.json` (права `600`, в `.gitignore`). Агент,
+читая лог, видит тег, а не ключ. Одно значение всегда даёт одно имя, повторы не
+плодят дубликатов.
+
+Ловятся: Telegram-бот-токен, OpenAI `sk-…`, GitHub `ghp_…`, Google `AIza…`,
+AWS `AKIA…`, Slack `xox…`, JWT, блоки `-----BEGIN … PRIVATE KEY-----`, а также
+`api_key`/`token`/`secret`/`password` со значением.
 
 ```bash
-tgvault secret set TG_API_HASH     # спросит значение, не отображая
+tgvault import -no-secrets              # отключить вынос для этого прогона
+tgvault secret chat <slug>              # имена (без значений)
+tgvault secret chat <slug> <NAME>       # значение — для скриптов, не для агента
 ```
-
-```ini
-# ~/.config/tgvault/.env
-TG_API_HASH={{secret:tgvault/TG_API_HASH}}
-```
-
-При старте `tgvault` подставляет значения из `~/.secrets/tgvault/<NAME>`
-(права `600`). Имя — уникально: одно значение может повторяться под разными
-именами, но в логах и `-h` оно заменится на **одно каноническое** имя, так что
-агент и человек видят только ссылку, а не ключ. `setup` сам пишет `api_id`/
-`api_hash` в хранилище и оставляет в `.env` ссылки.
-
-```bash
-tgvault secret ls            # имена (без значений)
-tgvault secret ref NAME      # {{secret:tgvault/NAME}}
-tgvault secret check         # права, пустые, повторы
-tgvault secret rm NAME
-```
-
-Хранилище по умолчанию `~/.secrets`, область — `tgvault`; переопределяются
-переменными `SECRETS_DIR` и `SECRETS_SCOPE`.
 
 ## Обновление
 

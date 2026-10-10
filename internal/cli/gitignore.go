@@ -16,6 +16,7 @@ func ensureGitignore(projectDir, out string) {
 	want := []string{
 		strings.TrimSuffix(out, "/") + "/",
 		".tg-import.json",
+		"**/.secrets.json",
 	}
 
 	gi := filepath.Join(projectDir, ".gitignore")

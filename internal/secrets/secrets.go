@@ -226,6 +226,33 @@ func (s Store) Mask(text string) string {
 	return text
 }
 
+// secretEnvRe — имена переменных окружения, значения которых прячем от LLM.
+var secretEnvRe = regexp.MustCompile(`(?i)(API[_-]?HASH|API[_-]?KEY|API[_-]?ID|SECRET|TOKEN|PASSWORD|PASSWD|2FA|PRIVATE[_-]?KEY)`)
+
+// MaskEnv заменяет значения секретных переменных окружения (по имени) на ссылку
+// {{secret:VAR}} — чтобы ключи из .env не засветились LLM в выводе бинаря.
+// Сам бинарь при этом читает .env как обычно: меняется только вид текста.
+func MaskEnv(text string) string {
+	type pair struct{ value, tag string }
+	var pairs []pair
+	for _, kv := range os.Environ() {
+		i := strings.IndexByte(kv, '=')
+		if i < 0 {
+			continue
+		}
+		k, v := kv[:i], kv[i+1:]
+		if v == "" || strings.Contains(v, prefix) || !secretEnvRe.MatchString(k) {
+			continue
+		}
+		pairs = append(pairs, pair{value: v, tag: prefix + k + "}}"})
+	}
+	sort.Slice(pairs, func(i, j int) bool { return len(pairs[i].value) > len(pairs[j].value) })
+	for _, p := range pairs {
+		text = strings.ReplaceAll(text, p.value, p.tag)
+	}
+	return text
+}
+
 // values читает все секреты и группирует ссылки по значению.
 func (s Store) values() map[string][]Ref {
 	out := map[string][]Ref{}

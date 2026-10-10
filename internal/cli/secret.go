@@ -4,19 +4,23 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"golang.org/x/term"
 
+	"github.com/Fugguri/tgvault/internal/config"
+	"github.com/Fugguri/tgvault/internal/redact"
 	"github.com/Fugguri/tgvault/internal/secrets"
 )
 
 // Secret выполняет подкоманды управления хранилищем секретов. Значения не
 // печатаются в stdout — наружу видно только имя.
 func Secret(args []string, force bool) error {
+	args, force = splitForce(args, force)
 	st := secrets.Default()
 	if len(args) == 0 {
-		return fmt.Errorf("secret: подкоманда set|ls|ref|rm|check (напр. tgvault secret set TG_API_HASH)")
+		return fmt.Errorf("secret: подкоманда set|ls|ref|rm|check|chat (напр. tgvault secret set TG_API_HASH)")
 	}
 	switch args[0] {
 	case "set":
@@ -77,9 +81,67 @@ func Secret(args []string, force bool) error {
 			fmt.Printf("! %s: %s\n", is.Ref, is.Message)
 		}
 		return nil
+	case "chat":
+		if len(args) < 2 {
+			return fmt.Errorf("secret chat <slug> [NAME]")
+		}
+		path, err := chatSecretsPath(args[1])
+		if err != nil {
+			return err
+		}
+		log := redact.LoadSecretLog(path)
+		if len(args) >= 3 {
+			v, ok := log.Value(args[2])
+			if !ok {
+				return fmt.Errorf("секрет %s не найден в %s", args[2], path)
+			}
+			fmt.Println(v) // для скриптов; агенту читать не нужно
+			return nil
+		}
+		names := log.Names()
+		if len(names) == 0 {
+			fmt.Printf("Секретов из чата %s нет (%s)\n", args[1], path)
+			return nil
+		}
+		for _, n := range names {
+			fmt.Printf("%s/%s\n", args[1], n)
+		}
+		return nil
 	default:
 		return fmt.Errorf("secret: неизвестная подкоманда %q", args[0])
 	}
+}
+
+// splitForce вынимает -force/--force из позиционных аргументов подкоманды:
+// flag.Parse останавливается на "set"/"ls", поэтому флаг до сюда не доходит.
+func splitForce(args []string, force bool) ([]string, bool) {
+	out := make([]string, 0, len(args))
+	for _, a := range args {
+		switch a {
+		case "-force", "--force":
+			force = true
+		default:
+			out = append(out, a)
+		}
+	}
+	return out, force
+}
+
+// chatSecretsPath находит .secrets.json чата по конфигу проекта (или дефолту).
+func chatSecretsPath(slug string) (string, error) {
+	out := "docs/telegram_chats"
+	wd, _ := os.Getwd()
+	if cfg, cfgPath, err := config.Load(wd); err == nil {
+		if cfg.Out != "" {
+			out = cfg.Out
+		}
+		if !filepath.IsAbs(out) {
+			out = filepath.Join(filepath.Dir(cfgPath), out)
+		}
+	} else {
+		out = filepath.Join(wd, out)
+	}
+	return filepath.Join(out, slug, ".secrets.json"), nil
 }
 
 // readSecret читает значение: скрыто с терминала, как есть — из пайпа.

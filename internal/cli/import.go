@@ -21,6 +21,7 @@ type ImportOpts struct {
 	All      bool      // импортировать все записи, а не только default
 	Entry    string    // импортировать только запись с этим slug
 	Full     bool      // полный пересбор (_log.md с нуля), игнорируя watermark
+	NoRedact bool      // не выносить токены/ключи из переписки
 	From, To time.Time // границы (нулевое = без границы)
 	Tr       Transcriber
 }
@@ -84,14 +85,14 @@ func Import(ctx context.Context, client *telegram.Client, dir string, o ImportOp
 			minID = importer.LoadState(slugDir).LastID
 		}
 		n, last, err := importer.Entry(ctx, client, e, importer.Options{
-			Out: out, From: from, To: to, MinID: minID, Rebuild: o.Full, Loc: time.Local,
+			Out: out, From: from, To: to, MinID: minID, Rebuild: o.Full, Loc: time.Local, NoRedact: o.NoRedact,
 		}, o.Tr, q)
 		if err != nil {
 			// access_hash мог протухнуть — резолвим заново по имени и пробуем ещё раз
 			if p, ok, rerr := tgx.Find(ctx, client.API(), e.Chat); rerr == nil && ok {
 				e.ChatID, e.AccessHash, e.Kind = p.ID, p.AccessHash, p.Kind
 				n, last, err = importer.Entry(ctx, client, e, importer.Options{
-					Out: out, From: from, To: to, MinID: minID, Rebuild: o.Full, Loc: time.Local,
+					Out: out, From: from, To: to, MinID: minID, Rebuild: o.Full, Loc: time.Local, NoRedact: o.NoRedact,
 				}, o.Tr, q)
 			}
 		}

@@ -33,6 +33,12 @@
   только проверка. Версия в бинарь — через `ldflags`. Раз в сутки команды с
   Telegram напоминают о новом релизе (`TGVAULT_NO_UPDATE_CHECK=1` отключает).
   Проверено вживую (`update -check` увидел v0.1.3) + тесты `internal/update`.
+- [x] **Секреты из чатов**: при `import` токены/ключи в переписке заменяются на
+  `{{secret:<NAME>}}`, значения — в `docs/telegram_chats/<slug>/.secrets.json` (0600,
+  gitignore). Детект по паттернам (tg-токен, `sk-`, `ghp_`, `AIza`, `AKIA`, `xox`,
+  JWT, privat key, `api_key/token/password=…`), имя детерминировано от значения
+  (повтор → одно имя). Флаг `-no-secrets`; чтение — `tgvault secret chat <slug> [NAME]`.
+  Проверено тестами `internal/redact` и `importer`.
 
 ## Осталось (беклог)
 

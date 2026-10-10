@@ -128,6 +128,21 @@ func TestMaskKeepsLongest(t *testing.T) {
 	}
 }
 
+func TestMaskEnvHidesSecretVars(t *testing.T) {
+	t.Setenv("TG_API_HASH", "deadbeefcafe1234")
+	t.Setenv("SOME_PLAIN", "visible")
+	got := MaskEnv("hash=deadbeefcafe1234 plain=visible")
+	if strings.Contains(got, "deadbeefcafe1234") {
+		t.Fatalf("значение секретной переменной не скрыто: %q", got)
+	}
+	if !strings.Contains(got, "{{secret:TG_API_HASH}}") {
+		t.Fatalf("нет ссылки на переменную: %q", got)
+	}
+	if !strings.Contains(got, "visible") {
+		t.Fatalf("обычное значение затронуто: %q", got)
+	}
+}
+
 func TestCheckFlagsDuplicateAndPerms(t *testing.T) {
 	s := newStore(t)
 	_ = s.Set("ONE", "dup", false)

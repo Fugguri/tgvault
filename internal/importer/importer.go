@@ -15,6 +15,7 @@ import (
 	"github.com/gotd/td/tg"
 
 	"github.com/Fugguri/tgvault/internal/config"
+	"github.com/Fugguri/tgvault/internal/redact"
 	"github.com/Fugguri/tgvault/internal/tgx"
 )
 
@@ -28,6 +29,7 @@ type Options struct {
 	MinID       int       // watermark: тянуть только сообщения с id > MinID
 	Rebuild     bool      // пересобрать _log.md с нуля
 	IncludeBots bool
+	NoRedact    bool // не выносить токены/ключи из переписки
 	Loc         *time.Location
 }
 
@@ -130,6 +132,12 @@ func Entry(ctx context.Context, client *telegram.Client, e config.Entry, opt Opt
 	logRoot := filepath.Join(opt.Out, slug)
 	filesDir := filepath.Join(logRoot, "files")
 
+	// секреты чата: токены из переписки выносим в файл, в логах — ссылки
+	var sec *redact.SecretLog
+	if !opt.NoRedact {
+		sec = redact.LoadSecretLog(filepath.Join(logRoot, ".secrets.json"))
+	}
+
 	// группировка по локальным дням
 	byDay := map[string][]*tg.Message{}
 	var days []string
@@ -212,12 +220,12 @@ func Entry(ctx context.Context, client *telegram.Client, e config.Entry, opt Opt
 			}
 		}
 		for _, m := range fresh {
-			sec, job, err := buildSection(ctx, client, m, auth, filesDir, updDir, tr, loc, previews, q)
+			section, job, err := buildSection(ctx, client, m, auth, filesDir, updDir, tr, loc, previews, q, sec)
 			if err != nil {
 				fh.Close()
 				return total, newLast, err
 			}
-			if _, err := fh.WriteString(sec); err != nil {
+			if _, err := fh.WriteString(section); err != nil {
 				fh.Close()
 				return total, newLast, err
 			}
@@ -228,6 +236,12 @@ func Entry(ctx context.Context, client *telegram.Client, e config.Entry, opt Opt
 		}
 		fh.Close()
 		fmt.Printf("  %s — +%d (upd_%s)\n", slug, len(fresh), day)
+	}
+	if sec != nil && sec.Added() > 0 {
+		if err := sec.Save(); err != nil {
+			return total, newLast, err
+		}
+		fmt.Printf("  🔑 %s — вынесено секретов: %d (.secrets.json)\n", slug, sec.Added())
 	}
 	return total, newLast, nil
 }
@@ -267,15 +281,21 @@ func (a *authorizer) author(m *tg.Message) string {
 }
 
 func buildSection(ctx context.Context, client *telegram.Client, m *tg.Message, auth *authorizer,
-	filesDir, updDir string, tr Transcriber, loc *time.Location, previews map[int]string, q *Queue) (string, *voiceJob, error) {
+	filesDir, updDir string, tr Transcriber, loc *time.Location, previews map[int]string, q *Queue, sec *redact.SecretLog) (string, *voiceJob, error) {
 	timeLabel := time.Unix(int64(m.Date), 0).In(loc).Format("15:04")
 	author := auth.author(m)
 	text := m.Message
+	if sec != nil {
+		text, _ = redact.Redact(text, sec.Put)
+	}
 
 	reply := ""
 	if rh, ok := m.ReplyTo.(*tg.MessageReplyHeader); ok {
 		if id, ok := rh.GetReplyToMsgID(); ok && id > 0 {
 			if pv := previews[id]; pv != "" {
+				if sec != nil {
+					pv, _ = redact.Redact(pv, sec.Put)
+				}
 				reply = fmt.Sprintf("↩ в ответ на msg:%d — «%s»\n\n", id, pv)
 			}
 			// нет превью (сообщение недоступно) — ссылку не пишем, чтобы не было висячих msg:N
