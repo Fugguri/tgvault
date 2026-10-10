@@ -20,11 +20,12 @@ jobs:
             goos: linux
             goarch: amd64
             asset: tgvault_linux_amd64
-          - os: macos-13
+          # macos-13 ретайрнут (job висит в очереди вечно) — Intel-образ теперь macos-15-intel.
+          - os: macos-15-intel
             goos: darwin
             goarch: amd64
             asset: tgvault_darwin_amd64
-          - os: macos-14
+          - os: macos-latest
             goos: darwin
             goarch: arm64
             asset: tgvault_darwin_arm64
