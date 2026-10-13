@@ -229,6 +229,8 @@ func main() {
 				Bot: *botUser, Self: *sendSelf, Steps: botSteps, Go: *goRun,
 				AllowDanger: *allowDanger, Pause: time.Duration(*pause * float64(time.Second)),
 			})
+		case "manage":
+			return cli.Manage(ctx, c, wd, pos)
 		default:
 			return fmt.Errorf("неизвестная команда %q", cmd)
 		}
@@ -241,7 +243,7 @@ func main() {
 
 var commands = map[string]bool{
 	"login": true, "init": true, "import": true, "migrate": true,
-	"setup": true, "list": true, "add": true, "send": true, "bot": true, "dialogs": true, "topics": true, "voice": true, "secret": true, "update": true,
+	"setup": true, "list": true, "add": true, "send": true, "bot": true, "dialogs": true, "topics": true, "voice": true, "secret": true, "update": true, "manage": true,
 }
 
 type stringSlice []string
@@ -420,6 +422,7 @@ func usage() {
   dialogs / topics   список диалогов / форум-топиков
   voice              найти и транскрибировать голосовое
   send               отправить/править/удалить сообщение
+  manage             чаты/топики/люди: create|topic|forward|invite|rights|kick
   bot                клик-тест бота
   secret             хранилище ключей: set|ls|ref|rm|check|chat
   update             обновление до свежего релиза (-check — только проверить)

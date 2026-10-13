@@ -12,9 +12,6 @@ import (
 	"github.com/gotd/td/telegram"
 	"github.com/gotd/td/telegram/uploader"
 	"github.com/gotd/td/tg"
-
-	"github.com/Fugguri/tgvault/internal/config"
-	"github.com/Fugguri/tgvault/internal/tgx"
 )
 
 // SendOpts — параметры команды send.
@@ -148,41 +145,11 @@ func replyTo(o SendOpts) tg.InputReplyToClass {
 }
 
 func resolveTarget(ctx context.Context, client *telegram.Client, dir string, o SendOpts) (tg.InputPeerClass, string, error) {
-	api := client.API()
-	if o.Self {
-		return &tg.InputPeerSelf{}, "Saved Messages", nil
-	}
-	if o.Alias != "" {
-		if cfg, _, err := config.Load(dir); err == nil {
-			for _, e := range cfg.Entries {
-				if e.Slug == o.Alias || e.Chat == o.Alias {
-					return tgx.InputPeer(e.Kind, e.ChatID, e.AccessHash), fmt.Sprintf("%s (slug=%s)", e.Chat, e.Slug), nil
-				}
-			}
-		}
-		return nil, "", fmt.Errorf("alias %q не найден в конфиге", o.Alias)
-	}
-	if o.ChatID != 0 {
-		p, ok, err := tgx.Resolve(ctx, api, o.ChatID)
-		if err != nil {
-			return nil, "", err
-		}
-		if !ok {
-			return nil, "", fmt.Errorf("chat id=%d не найден", o.ChatID)
-		}
-		return p.Input, fmt.Sprintf("%s (id=%d)", p.Title, p.ID), nil
-	}
-	if o.Chat == "" {
-		return nil, "", fmt.Errorf("не задан чат: -chat / -id / -alias")
-	}
-	p, ok, err := tgx.Find(ctx, api, o.Chat)
+	t, err := resolveChatTarget(ctx, client, dir, o.Chat, o.ChatID, o.Alias, o.Self)
 	if err != nil {
 		return nil, "", err
 	}
-	if !ok {
-		return nil, "", fmt.Errorf("чат %q не найден", o.Chat)
-	}
-	return p.Input, fmt.Sprintf("%s (id=%d)", p.Title, p.ID), nil
+	return t.Peer, t.Desc, nil
 }
 
 func preview(action, desc, text string, files []string, replyTo, topic, edit int, del []int) {

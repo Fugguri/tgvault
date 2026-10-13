@@ -2,7 +2,8 @@
 
 Импорт переписки Telegram в Markdown: читает чаты и форум-топики, скачивает
 медиа, транскрибирует голосовые локально (whisper.cpp) и раскладывает по дням.
-Плюс отправка/правка/удаление сообщений и клик-тест ботов.
+Плюс отправка/правка/удаление сообщений, управление чатами (создание групп и
+каналов, топики, пересылка, добавление людей и выдача прав) и клик-тест ботов.
 
 Один бинарь, без Python. MTProto через [gotd/td](https://github.com/gotd/td).
 
@@ -29,6 +30,9 @@ tgvault login      # вход в Telegram (один раз, сессия гло�
   модель грузится в процесс один раз.
 - **Справочник чатов** в конфиге проекта: что за чат, когда идти, кому писать.
 - **Отправка** `send`/`edit`/`delete` (dry-run по умолчанию).
+- **Управление чатами** `manage`: создать группу/канал/супергруппу и топики,
+  переслать сообщения, добавить людей, выдать/снять права админа, убрать/забанить
+  (dry-run по умолчанию).
 - **Клик-тест ботов** `bot` (шаги send/click/expect, защита от необратимых кнопок).
 
 ## Требования
@@ -81,6 +85,7 @@ cd ~/projects/my-project
 | `secret` | секреты из чатов: `chat <slug> [NAME]` |
 | `update` | обновиться до свежего релиза (`-check` — только проверить) |
 | `send` | отправить/править/удалить (`-text`, `-file`, `-reply-to`, `-topic`, `-edit`, `-delete`, `-send`) |
+| `manage` | чаты/топики/люди: `create`/`topic`/`forward`/`invite`/`rights`/`kick`/`delete` (dry-run по умолчанию) |
 | `bot` | клик-тест бота (`-bot`, `-step send:/start`, `-step click:…`, `-go`) |
 
 ## Секреты
@@ -113,6 +118,46 @@ tgvault import -no-secrets              # отключить вынос для �
 tgvault secret chat <slug>              # имена (без значений)
 tgvault secret chat <slug> <NAME>       # значение — для скриптов, не для агента
 ```
+
+## Управление чатами (`manage`)
+
+Все подкоманды по умолчанию **dry-run** — печатают превью; реальное действие —
+флаг `-send`. Люди задаются как `@username`, числовой `id` или телефон `+7999…`
+(`-user` можно повторять или перечислять через запятую).
+
+```bash
+# создать супергруппу с топиками и сразу пригласить людей
+tgvault manage create -title "Проект X" -kind group -forum -user @ivan -send
+
+# канал (broadcast) или обычная группа: -kind channel | chat
+tgvault manage create -title "Анонсы" -kind channel -about "новости" -send
+
+# создать форум-топик в существующей супергруппе
+tgvault manage topic -chat "Проект X" -title "Дедлайны" -send
+
+# переслать сообщения (можно -last N — последние N из источника)
+tgvault manage forward -chat "Источник" -last 10 -dest "Проект X" -dest-topic 12 -send
+tgvault manage forward -chat "Источник" -msg 100 -msg 101 -dest "Проект X" -send
+
+# добавить людей
+tgvault manage invite -chat "Проект X" -user @ivan,+79990000000 -send
+
+# права админа: пресет или точечно, должность (rank), снять
+tgvault manage rights -chat "Проект X" -user @ivan -preset admin -rank "Куратор" -send
+tgvault manage rights -chat "Проект X" -user @ivan -rights delete,ban,invite,pin -send
+tgvault manage rights -chat "Проект X" -user @ivan -revoke -send
+
+# убрать или забанить (навсегда / на N дней)
+tgvault manage kick -chat "Проект X" -user @ivan -send
+tgvault manage kick -chat "Проект X" -user @ivan -ban -days 7 -send
+
+# удалить группу/канал, которыми владеешь (необратимо)
+tgvault manage delete -chat "Проект X" -send
+```
+
+Права для `-rights`: `changeinfo`, `post`, `edit`, `delete`, `ban`, `invite`,
+`pin`, `addadmins`, `anonymous`, `managecall`, `topics`, `other`, `poststories`,
+`editstories`, `deletestories`. Пресеты: `admin` (широкий набор), `moderator`.
 
 ## Обновление
 
