@@ -7,11 +7,14 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/gotd/td/telegram"
 	"github.com/gotd/td/telegram/uploader"
 	"github.com/gotd/td/tg"
+
+	"github.com/Fugguri/tgvault/internal/approve"
 )
 
 // SendOpts — параметры команды send.
@@ -46,8 +49,11 @@ func Send(ctx context.Context, client *telegram.Client, dir string, o SendOpts) 
 
 	switch {
 	case len(o.Delete) > 0:
+		payload := approve.Canon("delete", peerKey(peer), intsKey(o.Delete))
+		if err := Gate(o.Do, "send/delete", preview("DELETE", desc, "", nil, 0, 0, 0, o.Delete), payload); err != nil {
+			return err
+		}
 		if !o.Do {
-			preview("DELETE", desc, "", nil, 0, 0, 0, o.Delete)
 			return nil
 		}
 		if _, err := client.API().MessagesDeleteMessages(ctx, &tg.MessagesDeleteMessagesRequest{Revoke: true, ID: o.Delete}); err != nil {
@@ -57,8 +63,11 @@ func Send(ctx context.Context, client *telegram.Client, dir string, o SendOpts) 
 		return nil
 
 	case o.Edit != 0:
+		payload := approve.Canon("edit", peerKey(peer), strconv.Itoa(o.Edit), text)
+		if err := Gate(o.Do, "send/edit", preview("EDIT", desc, text, nil, 0, 0, o.Edit, nil), payload); err != nil {
+			return err
+		}
 		if !o.Do {
-			preview("EDIT", desc, text, nil, 0, 0, o.Edit, nil)
 			return nil
 		}
 		req := &tg.MessagesEditMessageRequest{Peer: peer, ID: o.Edit}
@@ -73,8 +82,11 @@ func Send(ctx context.Context, client *telegram.Client, dir string, o SendOpts) 
 		if text == "" && len(o.Files) == 0 {
 			return fmt.Errorf("нечего делать: нужен -text/-text-file/-file, либо -edit, либо -delete")
 		}
+		payload := approve.Canon("send", peerKey(peer), text, filesKey(o.Files), strconv.Itoa(o.ReplyTo), strconv.Itoa(o.Topic))
+		if err := Gate(o.Do, "send", preview("SEND", desc, text, o.Files, o.ReplyTo, o.Topic, 0, nil), payload); err != nil {
+			return err
+		}
 		if !o.Do {
-			preview("SEND", desc, text, o.Files, o.ReplyTo, o.Topic, 0, nil)
 			return nil
 		}
 		reply := replyTo(o)
@@ -152,30 +164,53 @@ func resolveTarget(ctx context.Context, client *telegram.Client, dir string, o S
 	return t.Peer, t.Desc, nil
 }
 
-func preview(action, desc, text string, files []string, replyTo, topic, edit int, del []int) {
-	fmt.Println(strings.Repeat("=", 60))
-	fmt.Printf("DRY-RUN: %s\nКуда:    %s\n", action, desc)
+func preview(action, desc, text string, files []string, replyTo, topic, edit int, del []int) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "%s\nDRY-RUN: %s\nКуда:    %s\n", strings.Repeat("=", 60), action, desc)
 	if topic > 0 {
-		fmt.Printf("Топик:   %d\n", topic)
+		fmt.Fprintf(&b, "Топик:   %d\n", topic)
 	}
 	if replyTo > 0 {
-		fmt.Printf("Reply:   msg_id=%d\n", replyTo)
+		fmt.Fprintf(&b, "Reply:   msg_id=%d\n", replyTo)
 	}
 	if edit > 0 {
-		fmt.Printf("Edit:    msg_id=%d\n", edit)
+		fmt.Fprintf(&b, "Edit:    msg_id=%d\n", edit)
 	}
 	if len(del) > 0 {
-		fmt.Printf("Delete:  %v\n", del)
+		fmt.Fprintf(&b, "Delete:  %v\n", del)
 	}
 	if len(files) > 0 {
-		fmt.Printf("Файлы:   %v\n", files)
+		fmt.Fprintf(&b, "Файлы:   %v\n", files)
 	}
 	if text != "" {
-		fmt.Println(strings.Repeat("-", 60))
-		fmt.Println(text)
+		fmt.Fprintf(&b, "%s\n%s\n", strings.Repeat("-", 60), text)
 	}
-	fmt.Println(strings.Repeat("=", 60))
-	fmt.Println("Это превью. Для реального действия добавь -send.")
+	b.WriteString(strings.Repeat("=", 60))
+	return b.String()
+}
+
+func intsKey(xs []int) string {
+	parts := make([]string, len(xs))
+	for i, x := range xs {
+		parts[i] = strconv.Itoa(x)
+	}
+	return strings.Join(parts, ",")
+}
+
+func filesKey(paths []string) string {
+	parts := make([]string, 0, len(paths))
+	for _, p := range paths {
+		abs, err := filepath.Abs(p)
+		if err != nil {
+			abs = p
+		}
+		if fi, err := os.Stat(p); err == nil {
+			parts = append(parts, fmt.Sprintf("%s:%d:%d", abs, fi.Size(), fi.ModTime().Unix()))
+		} else {
+			parts = append(parts, abs)
+		}
+	}
+	return strings.Join(parts, ",")
 }
 
 func randomID() int64 {

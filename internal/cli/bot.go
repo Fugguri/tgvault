@@ -10,6 +10,7 @@ import (
 	"github.com/gotd/td/telegram"
 	"github.com/gotd/td/tg"
 
+	"github.com/Fugguri/tgvault/internal/approve"
 	"github.com/Fugguri/tgvault/internal/tgx"
 )
 
@@ -44,17 +45,22 @@ func Bot(ctx context.Context, client *telegram.Client, o BotOpts) error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("бот: %s\n", title)
 
-	if !o.Go {
-		fmt.Println("ПЛАН (dry-run; добавь -go для прогона):")
-		for _, s := range steps {
-			danger := ""
-			if s.kind == "click" && dangerRe.MatchString(s.value) && !o.AllowDanger {
-				danger = " ⛔НЕОБРАТИМО"
-			}
-			fmt.Printf("  %s: %s%s\n", s.kind, s.value, danger)
+	var plan strings.Builder
+	fmt.Fprintf(&plan, "BOT %s\n", title)
+	for _, s := range steps {
+		danger := ""
+		if s.kind == "click" && dangerRe.MatchString(s.value) && !o.AllowDanger {
+			danger = " ⛔НЕОБРАТИМО"
 		}
+		fmt.Fprintf(&plan, "  %s: %s%s\n", s.kind, s.value, danger)
+	}
+
+	payload := approve.Canon("bot", peerKey(peer), strings.Join(o.Steps, "\x1e"), fmt.Sprint(o.AllowDanger))
+	if err := Gate(o.Go, "bot", plan.String(), payload); err != nil {
+		return err
+	}
+	if !o.Go {
 		return nil
 	}
 

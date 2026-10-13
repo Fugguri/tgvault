@@ -69,3 +69,18 @@ func inputChannel(p tg.InputPeerClass) (tg.InputChannelClass, bool) {
 	}
 	return nil, false
 }
+
+// peerKey — стабильный ключ цели для хэша согласования (не зависит от имени).
+func peerKey(p tg.InputPeerClass) string {
+	switch v := p.(type) {
+	case *tg.InputPeerSelf:
+		return "self"
+	case *tg.InputPeerUser:
+		return fmt.Sprintf("user:%d", v.UserID)
+	case *tg.InputPeerChat:
+		return fmt.Sprintf("chat:%d", v.ChatID)
+	case *tg.InputPeerChannel:
+		return fmt.Sprintf("channel:%d", v.ChannelID)
+	}
+	return "unknown"
+}

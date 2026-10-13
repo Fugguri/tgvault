@@ -90,6 +90,9 @@ func main() {
 		sendReply = flag.Int("reply-to", 0, "send: msg_id для ответа")
 		sendEdit  = flag.Int("edit", 0, "send: msg_id для редактирования")
 		sendDo    = flag.Bool("send", false, "send: ВЫПОЛНИТЬ (иначе dry-run)")
+
+		// approve
+		apprTTL = flag.Duration("ttl", 5*time.Minute, "approve: срок действия согласования")
 	)
 	var sendFiles, sendDeletes stringSlice
 	flag.Var(&sendFiles, "file", "send: файл/медиа (можно несколько)")
@@ -133,6 +136,18 @@ func main() {
 	if cmd == "list" {
 		wd, _ := os.Getwd()
 		if err := cli.List(wd); err != nil {
+			die("%v", err)
+		}
+		return
+	}
+	if cmd == "approve" {
+		if err := cli.Approve(flag.Args(), *apprTTL); err != nil {
+			die("%v", err)
+		}
+		return
+	}
+	if cmd == "pending" {
+		if err := cli.PendingList(); err != nil {
 			die("%v", err)
 		}
 		return
@@ -243,7 +258,7 @@ func main() {
 
 var commands = map[string]bool{
 	"login": true, "init": true, "import": true, "migrate": true,
-	"setup": true, "list": true, "add": true, "send": true, "bot": true, "dialogs": true, "topics": true, "voice": true, "secret": true, "update": true, "manage": true,
+	"setup": true, "list": true, "add": true, "send": true, "bot": true, "dialogs": true, "topics": true, "voice": true, "secret": true, "update": true, "manage": true, "approve": true, "pending": true,
 }
 
 type stringSlice []string
@@ -332,7 +347,7 @@ func loadEnv(strict bool) error {
 // needsKeys — командам, которые работают с Telegram, нужны валидные ключи.
 func needsKeys(cmd string) bool {
 	switch cmd {
-	case "secret", "update", "list", "setup":
+	case "secret", "update", "list", "setup", "approve", "pending":
 		return false
 	}
 	return true
@@ -421,9 +436,10 @@ func usage() {
   list               сводка записей проекта
   dialogs / topics   список диалогов / форум-топиков
   voice              найти и транскрибировать голосовое
-  send               отправить/править/удалить сообщение
-  manage             чаты/топики/люди: create|topic|forward|invite|rights|kick
-  bot                клик-тест бота
+  send               отправить/править/удалить сообщение (требует согласования)
+  manage             чаты/топики/люди: create|topic|forward|invite|rights|kick|delete
+  bot                клик-тест бота (требует согласования при -go)
+  approve / pending  согласовать исходящее действие / список запросов (интерактивно)
   secret             хранилище ключей: set|ls|ref|rm|check|chat
   update             обновление до свежего релиза (-check — только проверить)
 

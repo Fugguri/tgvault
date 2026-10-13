@@ -12,6 +12,7 @@ import (
 	"github.com/gotd/td/telegram"
 	"github.com/gotd/td/tg"
 
+	"github.com/Fugguri/tgvault/internal/approve"
 	"github.com/Fugguri/tgvault/internal/tgx"
 )
 
@@ -37,7 +38,7 @@ const manageHelp = `tgvault manage — управление чатами, топ
 
 Общие:
   -user U   пользователь: @username | id | +7999… (можно несколько, в т.ч. через запятую)
-  -send     ВЫПОЛНИТЬ (по умолчанию dry-run — только превью)
+  -send     ВЫПОЛНИТЬ (dry-run по умолчанию; нужно согласование: tgvault approve <id>)
 
 Права для -rights (через запятую):
   changeinfo, post, edit, delete, ban, invite, pin, addadmins, anonymous,
@@ -150,20 +151,22 @@ func manageCreate(ctx context.Context, client *telegram.Client, title, about, ki
 		}
 	}
 
+	var b strings.Builder
+	fmt.Fprintf(&b, "CREATE %s\nНазвание:  %s\n", kindLabel(kind), title)
+	if about != "" {
+		fmt.Fprintf(&b, "Описание:  %s\n", about)
+	}
+	if forum {
+		b.WriteString("Топики:    да\n")
+	}
+	if len(us) > 0 {
+		fmt.Fprintf(&b, "Участники: %s\n", joinUsers(us))
+	}
+	payload := approve.Canon("manage/create", kind, title, about, fmt.Sprint(forum), usersKey(us))
+	if err := Gate(do, "manage/create", b.String(), payload); err != nil {
+		return err
+	}
 	if !do {
-		fmt.Println(strings.Repeat("=", 60))
-		fmt.Printf("DRY-RUN: CREATE %s\nНазвание:  %s\n", kindLabel(kind), title)
-		if about != "" {
-			fmt.Printf("Описание:  %s\n", about)
-		}
-		if forum {
-			fmt.Println("Топики:    да")
-		}
-		if len(us) > 0 {
-			fmt.Printf("Участники: %s\n", joinUsers(us))
-		}
-		fmt.Println(strings.Repeat("=", 60))
-		fmt.Println("Это превью. Для реального действия добавь -send.")
 		return nil
 	}
 
@@ -229,11 +232,12 @@ func manageTopic(ctx context.Context, client *telegram.Client, dir, chat string,
 	if err != nil {
 		return err
 	}
+	sum := fmt.Sprintf("CREATE TOPIC\nКуда:     %s\nНазвание: %s", t.Desc, title)
+	payload := approve.Canon("manage/topic", peerKey(t.Peer), title)
+	if err := Gate(do, "manage/topic", sum, payload); err != nil {
+		return err
+	}
 	if !do {
-		fmt.Println(strings.Repeat("=", 60))
-		fmt.Printf("DRY-RUN: CREATE TOPIC\nКуда:     %s\nНазвание: %s\n", t.Desc, title)
-		fmt.Println(strings.Repeat("=", 60))
-		fmt.Println("Это превью. Для реального действия добавь -send.")
 		return nil
 	}
 	req := &tg.MessagesCreateForumTopicRequest{Peer: t.Peer, Title: title, RandomID: randomID()}
@@ -281,21 +285,24 @@ func manageForward(ctx context.Context, client *telegram.Client, dir string, o f
 		return fmt.Errorf("forward: нужны -msg ID… или -last N")
 	}
 
+	var b strings.Builder
+	fmt.Fprintf(&b, "FORWARD\nОткуда:  %s\nКуда:    %s\n", src.Desc, dst.Desc)
+	if o.destTopic > 0 {
+		fmt.Fprintf(&b, "Топик:   %d\n", o.destTopic)
+	}
+	fmt.Fprintf(&b, "Сообщения: %v\n", ids)
+	if o.dropAuthor {
+		b.WriteString("Автор:   скрыть\n")
+	}
+	if o.silent {
+		b.WriteString("Тихо:    да\n")
+	}
+	payload := approve.Canon("manage/forward", peerKey(src.Peer), peerKey(dst.Peer),
+		intsKey(ids), strconv.Itoa(o.destTopic), fmt.Sprint(o.dropAuthor), fmt.Sprint(o.silent))
+	if err := Gate(o.do, "manage/forward", b.String(), payload); err != nil {
+		return err
+	}
 	if !o.do {
-		fmt.Println(strings.Repeat("=", 60))
-		fmt.Printf("DRY-RUN: FORWARD\nОткуда:  %s\nКуда:    %s\n", src.Desc, dst.Desc)
-		if o.destTopic > 0 {
-			fmt.Printf("Топик:   %d\n", o.destTopic)
-		}
-		fmt.Printf("Сообщения: %v\n", ids)
-		if o.dropAuthor {
-			fmt.Println("Автор:   скрыть")
-		}
-		if o.silent {
-			fmt.Println("Тихо:    да")
-		}
-		fmt.Println(strings.Repeat("=", 60))
-		fmt.Println("Это превью. Для реального действия добавь -send.")
 		return nil
 	}
 
@@ -323,16 +330,17 @@ func manageInvite(ctx context.Context, client *telegram.Client, dir, chat string
 		return err
 	}
 
+	sum := fmt.Sprintf("INVITE\nКуда:  %s\nКого:  %s", t.Desc, joinUsers(us))
+	if err := Gate(do, "manage/invite", sum, approve.Canon("manage/invite", peerKey(t.Peer), usersKey(us), strconv.Itoa(fwdLimit))); err != nil {
+		return err
+	}
+	if !do {
+		return nil
+	}
+
 	switch p := t.Peer.(type) {
 	case *tg.InputPeerChannel:
 		ch, _ := inputChannel(t.Peer)
-		if !do {
-			fmt.Println(strings.Repeat("=", 60))
-			fmt.Printf("DRY-RUN: INVITE\nКуда:  %s\nКого:  %s\n", t.Desc, joinUsers(us))
-			fmt.Println(strings.Repeat("=", 60))
-			fmt.Println("Это превью. Для реального действия добавь -send.")
-			return nil
-		}
 		var ius []tg.InputUserClass
 		for _, u := range us {
 			ius = append(ius, u.inputUser())
@@ -350,13 +358,6 @@ func manageInvite(ctx context.Context, client *telegram.Client, dir, chat string
 		return nil
 
 	case *tg.InputPeerChat:
-		if !do {
-			fmt.Println(strings.Repeat("=", 60))
-			fmt.Printf("DRY-RUN: INVITE\nКуда:  %s\nКого:  %s\n", t.Desc, joinUsers(us))
-			fmt.Println(strings.Repeat("=", 60))
-			fmt.Println("Это превью. Для реального действия добавь -send.")
-			return nil
-		}
 		for _, u := range us {
 			if _, err := client.API().MessagesAddChatUser(ctx, &tg.MessagesAddChatUserRequest{
 				ChatID: p.ChatID, UserID: u.inputUser(), FwdLimit: fwdLimit,
@@ -403,12 +404,16 @@ func manageRights(ctx context.Context, client *telegram.Client, dir, chat string
 	if revoke {
 		action = "снять админку"
 	}
+	payload := approve.Canon("manage/rights", peerKey(t.Peer), usersKey(us), preset, rights, rank, fmt.Sprint(revoke))
+	if err := Gate(do, "manage/rights", rightsPreview(action, t.Desc, us, preset, rights, rank, revoke), payload); err != nil {
+		return err
+	}
+	if !do {
+		return nil
+	}
 	switch t.Peer.(type) {
 	case *tg.InputPeerChannel:
 		ch, _ := inputChannel(t.Peer)
-		if !do {
-			return rightsPreview(action, t.Desc, us, preset, rights, rank, revoke)
-		}
 		for _, u := range us {
 			req := &tg.ChannelsEditAdminRequest{Channel: ch, UserID: u.inputUser(), AdminRights: ar}
 			if rank != "" {
@@ -423,9 +428,6 @@ func manageRights(ctx context.Context, client *telegram.Client, dir, chat string
 
 	case *tg.InputPeerChat:
 		p := t.Peer.(*tg.InputPeerChat)
-		if !do {
-			return rightsPreview(action, t.Desc, us, preset, rights, rank, revoke)
-		}
 		for _, u := range us {
 			if _, err := client.API().MessagesEditChatAdmin(ctx, &tg.MessagesEditChatAdminRequest{
 				ChatID: p.ChatID, UserID: u.inputUser(), IsAdmin: !revoke,
@@ -441,24 +443,22 @@ func manageRights(ctx context.Context, client *telegram.Client, dir, chat string
 	}
 }
 
-func rightsPreview(action, desc string, us []resolvedUser, preset, rights, rank string, revoke bool) error {
-	fmt.Println(strings.Repeat("=", 60))
-	fmt.Printf("DRY-RUN: RIGHTS (%s)\nГде:   %s\nКого:  %s\n", action, desc, joinUsers(us))
+func rightsPreview(action, desc string, us []resolvedUser, preset, rights, rank string, revoke bool) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "RIGHTS (%s)\nГде:   %s\nКого:  %s\n", action, desc, joinUsers(us))
 	if preset != "" {
-		fmt.Printf("Пресет: %s\n", preset)
+		fmt.Fprintf(&b, "Пресет: %s\n", preset)
 	}
 	if rights != "" {
-		fmt.Printf("Права:  %s\n", rights)
+		fmt.Fprintf(&b, "Права:  %s\n", rights)
 	}
 	if rank != "" {
-		fmt.Printf("Rank:   %s\n", rank)
+		fmt.Fprintf(&b, "Rank:   %s\n", rank)
 	}
 	if revoke {
-		fmt.Println("Режим:  снять админку")
+		b.WriteString("Режим:  снять админку\n")
 	}
-	fmt.Println(strings.Repeat("=", 60))
-	fmt.Println("Это превью. Для реального действия добавь -send.")
-	return nil
+	return b.String()
 }
 
 func manageKick(ctx context.Context, client *telegram.Client, dir, chat string, chatID int64, alias string, users strList, ban bool, days int, do bool) error {
@@ -480,24 +480,26 @@ func manageKick(ctx context.Context, client *telegram.Client, dir, chat string, 
 		until = int(time.Now().Add(time.Duration(days) * 24 * time.Hour).Unix())
 	}
 
+	var b strings.Builder
+	fmt.Fprintf(&b, "KICK\nГде:  %s\nКого: %s\nДействие: %s\n", t.Desc, joinUsers(us), verb)
+	if ban {
+		if days > 0 {
+			fmt.Fprintf(&b, "Срок: %d дн.\n", days)
+		} else {
+			b.WriteString("Срок: навсегда\n")
+		}
+	}
+	payload := approve.Canon("manage/kick", peerKey(t.Peer), usersKey(us), fmt.Sprint(ban), strconv.Itoa(days))
+	if err := Gate(do, "manage/kick", b.String(), payload); err != nil {
+		return err
+	}
+	if !do {
+		return nil
+	}
+
 	switch p := t.Peer.(type) {
 	case *tg.InputPeerChannel:
 		ch, _ := inputChannel(t.Peer)
-		if !do {
-			fmt.Println(strings.Repeat("=", 60))
-			fmt.Printf("DRY-RUN: KICK\nГде:  %s\nКого: %s\n", t.Desc, joinUsers(us))
-			fmt.Printf("Действие: %s\n", verb)
-			if ban {
-				if days > 0 {
-					fmt.Printf("Срок: %d дн.\n", days)
-				} else {
-					fmt.Println("Срок: навсегда")
-				}
-			}
-			fmt.Println(strings.Repeat("=", 60))
-			fmt.Println("Это превью. Для реального действия добавь -send.")
-			return nil
-		}
 		for _, u := range us {
 			banReq := &tg.ChannelsEditBannedRequest{
 				Channel: ch, Participant: u.inputPeer(),
@@ -519,13 +521,6 @@ func manageKick(ctx context.Context, client *telegram.Client, dir, chat string, 
 		return nil
 
 	case *tg.InputPeerChat:
-		if !do {
-			fmt.Println(strings.Repeat("=", 60))
-			fmt.Printf("DRY-RUN: KICK\nГде:  %s\nКого: %s\n", t.Desc, joinUsers(us))
-			fmt.Println(strings.Repeat("=", 60))
-			fmt.Println("Это превью. Для реального действия добавь -send.")
-			return nil
-		}
 		for _, u := range us {
 			if _, err := client.API().MessagesDeleteChatUser(ctx, &tg.MessagesDeleteChatUserRequest{
 				ChatID: p.ChatID, UserID: u.inputUser(),
@@ -546,11 +541,11 @@ func manageDelete(ctx context.Context, client *telegram.Client, dir, chat string
 	if err != nil {
 		return err
 	}
+	sum := fmt.Sprintf("DELETE\nЧат: %s\n⚠ Удаление необратимо.", t.Desc)
+	if err := Gate(do, "manage/delete", sum, approve.Canon("manage/delete", peerKey(t.Peer))); err != nil {
+		return err
+	}
 	if !do {
-		fmt.Println(strings.Repeat("=", 60))
-		fmt.Printf("DRY-RUN: DELETE\nЧат: %s\n", t.Desc)
-		fmt.Println(strings.Repeat("=", 60))
-		fmt.Println("⚠ Удаление необратимо. Реально — добавь -send.")
 		return nil
 	}
 	switch t.Peer.(type) {
@@ -829,6 +824,14 @@ func joinUsers(us []resolvedUser) string {
 		parts = append(parts, u.String())
 	}
 	return strings.Join(parts, ", ")
+}
+
+func usersKey(us []resolvedUser) string {
+	parts := make([]string, 0, len(us))
+	for _, u := range us {
+		parts = append(parts, strconv.FormatInt(u.ID, 10))
+	}
+	return strings.Join(parts, ",")
 }
 
 func randomIDs(n int) []int64 {
