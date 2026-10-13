@@ -93,6 +93,7 @@ func main() {
 
 		// approve
 		apprTTL = flag.Duration("ttl", 5*time.Minute, "approve: срок действия согласования")
+		apprYes = flag.Bool("y", false, "approve: подтвердить без вопроса (только с согласия пользователя)")
 	)
 	var sendFiles, sendDeletes stringSlice
 	flag.Var(&sendFiles, "file", "send: файл/медиа (можно несколько)")
@@ -141,7 +142,7 @@ func main() {
 		return
 	}
 	if cmd == "approve" {
-		if err := cli.Approve(flag.Args(), *apprTTL); err != nil {
+		if err := cli.Approve(flag.Args(), *apprTTL, *apprYes); err != nil {
 			die("%v", err)
 		}
 		return
@@ -439,7 +440,7 @@ func usage() {
   send               отправить/править/удалить сообщение (требует согласования)
   manage             чаты/топики/люди: create|topic|forward|invite|rights|kick|delete
   bot                клик-тест бота (требует согласования при -go)
-  approve / pending  согласовать исходящее действие / список запросов (интерактивно)
+  approve / pending  согласовать исходящее (-y после согласия) / список запросов
   secret             хранилище ключей: set|ls|ref|rm|check|chat
   update             обновление до свежего релиза (-check — только проверить)
 
