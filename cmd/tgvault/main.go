@@ -175,9 +175,29 @@ func main() {
 	}
 	if cmd == "import" || cmd == "migrate" {
 		wd, _ := os.Getwd()
-		if _, _, err := config.Load(wd); err != nil {
+		cfg, cfgPath, err := config.Load(wd)
+		if err != nil {
 			die("конфиг не найден: %s вверх по дереву", config.Path)
 		}
+		// Даты из конфига проверяются здесь же — до входа в Telegram: опечатка
+		// должна падать сразу, а не после коннекта и логина.
+		if _, err := cli.ParseDate(cfg.From); err != nil {
+			die("from в конфиге %s: %v", cfgPath, err)
+		}
+		if _, err := cli.ParseDate(cfg.To); err != nil {
+			die("to в конфиге %s: %v", cfgPath, err)
+		}
+	}
+
+	// Даты из флагов разбираются до коннекта к Telegram: опечатка должна падать
+	// с внятным сообщением, а не молча становиться «граница не задана».
+	fromD, errFrom := cli.ParseDate(*fromStr)
+	if errFrom != nil {
+		die("-from: %v", errFrom)
+	}
+	toD, errTo := cli.ParseDate(*toStr)
+	if errTo != nil {
+		die("-to: %v", errTo)
 	}
 
 	if *apiID == 0 || *apiHash == "" {
@@ -226,8 +246,8 @@ func main() {
 				Full:      *fullReb,
 				Unbounded: *allHistory,
 				NoRedact:  *noSecrets,
-				From:      cli.ParseDate(*fromStr),
-				To:        cli.ParseDate(*toStr),
+				From:      fromD,
+				To:        toD,
 				Tr:        tr,
 			})
 		case "dialogs":
@@ -246,7 +266,7 @@ func main() {
 			return cli.View(ctx, c, wd, cli.ViewOpts{
 				Chat: *sendChat, ChatID: *sendID, Alias: *sendAlias, Self: *sendSelf,
 				Entry: *entrySlug, Topic: *topicID,
-				From: cli.ParseDate(*fromStr), To: cli.ParseDate(*toStr),
+				From: fromD, To: toD,
 				Last: *viewLast, MaxLen: *viewMaxLen, MaxMsgs: *viewMaxMsgs,
 				Media: *viewMedia, Transcribe: *viewTranscribe, Tr: tr,
 			})

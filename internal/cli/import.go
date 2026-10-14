@@ -62,20 +62,14 @@ func Import(ctx context.Context, client *telegram.Client, dir string, o ImportOp
 		return fmt.Errorf("нет дефолтных записей (запусти init или добавь -all)")
 	}
 
-	from, to := o.From, o.To
-	if from.IsZero() {
-		from = ParseDate(cfg.From)
+	// Даты из конфига проверяются и здесь, хотя cmd/ ловит их раньше (до коннекта):
+	// границы нужны до первой записи на диск, чтобы часть записей не уехала в логи
+	// при сломанном конфиге.
+	if _, err := importer.ParseDate(cfg.From); err != nil {
+		return fmt.Errorf("from в конфиге %s: %w", cfgPath, err)
 	}
-	if to.IsZero() {
-		to = ParseDate(cfg.To)
-	}
-	// Защита от неограниченного первого прохода: без явной нижней границы
-	// тянем только последнее окно, иначе первый импорт уходит в полную
-	// историю и ловит FLOOD_WAIT. Вся история — тоже явно (-all-history/-full).
-	if from.IsZero() && !o.Unbounded && !o.Full {
-		from = time.Now().Add(-importer.DefaultWindow)
-		fmt.Printf("Диапазон по умолчанию: с %s (вся история — -all-history или -full; свой — -from/from в конфиге)\n",
-			from.Format("2006-01-02"))
+	if _, err := importer.ParseDate(cfg.To); err != nil {
+		return fmt.Errorf("to в конфиге %s: %w", cfgPath, err)
 	}
 
 	fmt.Printf("Импорт: %s → %s (%d записей)\n", cfgPath, out, len(chosen))
@@ -86,6 +80,7 @@ func Import(ctx context.Context, client *telegram.Client, dir string, o ImportOp
 	}
 
 	grand := 0
+	windowNotice := false
 	for _, e := range chosen {
 		e = ensurePeer(ctx, client, e)
 		slugDir := filepath.Join(out, e.Slug)
@@ -93,15 +88,29 @@ func Import(ctx context.Context, client *telegram.Client, dir string, o ImportOp
 		if !o.Full {
 			minID = importer.LoadState(slugDir).LastID
 		}
+		// Границы считаются на каждую запись отдельно: окно по умолчанию
+		// полагается только тем, у кого ещё нет состояния.
+		rng, err := importer.ResolveRange(o.From, o.To, cfg.From, cfg.To, minID, o.Unbounded, o.Full, time.Now())
+		if err != nil {
+			return err
+		}
+		if rng.IgnoreWatermark {
+			minID = 0
+		}
+		if rng.Windowed && !windowNotice {
+			windowNotice = true
+			fmt.Printf("Диапазон по умолчанию: с %s (вся история — -all-history или -full; свой — -from/from в конфиге)\n",
+				rng.From.Format("2006-01-02"))
+		}
 		n, last, err := importer.Entry(ctx, client, e, importer.Options{
-			Out: out, From: from, To: to, MinID: minID, Rebuild: o.Full, Loc: time.Local, NoRedact: o.NoRedact,
+			Out: out, From: rng.From, To: rng.To, MinID: minID, Rebuild: o.Full, Loc: time.Local, NoRedact: o.NoRedact,
 		}, o.Tr, q)
 		if err != nil {
 			// access_hash мог протухнуть — резолвим заново по имени и пробуем ещё раз
 			if p, ok, rerr := tgx.Find(ctx, client.API(), e.Chat); rerr == nil && ok {
 				e.ChatID, e.AccessHash, e.Kind = p.ID, p.AccessHash, p.Kind
 				n, last, err = importer.Entry(ctx, client, e, importer.Options{
-					Out: out, From: from, To: to, MinID: minID, Rebuild: o.Full, Loc: time.Local, NoRedact: o.NoRedact,
+					Out: out, From: rng.From, To: rng.To, MinID: minID, Rebuild: o.Full, Loc: time.Local, NoRedact: o.NoRedact,
 				}, o.Tr, q)
 			}
 		}
@@ -123,15 +132,11 @@ func Import(ctx context.Context, client *telegram.Client, dir string, o ImportOp
 	return nil
 }
 
-func ParseDate(s string) time.Time {
-	if s == "" {
-		return time.Time{}
-	}
-	t, err := time.ParseInLocation("2006-01-02", s, time.Local)
-	if err != nil {
-		return time.Time{}
-	}
-	return t
+// ParseDate разбирает дату из флага (-from/-to). Пустая строка — нулевое время.
+// Ошибка отдаётся наружу: проглотить её нельзя — опечатка в дате тогда выглядит
+// как «граница не задана» и молча подменяется окном по умолчанию.
+func ParseDate(s string) (time.Time, error) {
+	return importer.ParseDate(s)
 }
 
 // ensurePeer нормализует запись (в т.ч. старый формат) и добивает access_hash.
