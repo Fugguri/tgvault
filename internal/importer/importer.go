@@ -22,6 +22,10 @@ import (
 // Transcriber — транскрибация аудиофайла в текст (может быть nil).
 type Transcriber func(ctx context.Context, path string) (string, error)
 
+// DefaultWindow — окно первого прохода по умолчанию: защита от вытягивания
+// всей истории и FLOOD_WAIT. Полную историю тянем только явно (Unbounded/Rebuild).
+const DefaultWindow = 30 * 24 * time.Hour
+
 // Options — параметры импорта.
 type Options struct {
 	Out         string    // абсолютный корень раскладки

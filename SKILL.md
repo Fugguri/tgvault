@@ -70,10 +70,14 @@ tgvault list
 ### Шаг 3. Импорт
 
 ```bash
-tgvault import                        # дефолтные записи
+tgvault import                        # дефолтные записи (последние 30 дней)
 tgvault import -entry Mind_Сториз     # одна запись
 tgvault import -all -from 2026-09-01  # все записи, с даты
+tgvault import -all -all-history      # все записи, вся история (осторожно: FLOOD_WAIT)
 ```
+
+Без `-from` импорт берёт только последние 30 дней — не вытягивай всю историю
+по умолчанию. Полная история — явно `-all-history`/`-full`.
 
 Результат — логи: `docs/telegram_chats/<slug>/upd_<дата>/_log.md`.
 

@@ -18,12 +18,13 @@ type Transcriber = importer.Transcriber
 
 // ImportOpts — параметры команды import.
 type ImportOpts struct {
-	All      bool      // импортировать все записи, а не только default
-	Entry    string    // импортировать только запись с этим slug
-	Full     bool      // полный пересбор (_log.md с нуля), игнорируя watermark
-	NoRedact bool      // не выносить токены/ключи из переписки
-	From, To time.Time // границы (нулевое = без границы)
-	Tr       Transcriber
+	All       bool      // импортировать все записи, а не только default
+	Entry     string    // импортировать только запись с этим slug
+	Full      bool      // полный пересбор (_log.md с нуля), игнорируя watermark
+	Unbounded bool      // тянуть всю историю, без окна по умолчанию
+	NoRedact  bool      // не выносить токены/ключи из переписки
+	From, To  time.Time // границы (нулевое = без границы)
+	Tr        Transcriber
 }
 
 // Import прогоняет импорт по конфигу проекта: дефолтные записи (или все).
@@ -67,6 +68,14 @@ func Import(ctx context.Context, client *telegram.Client, dir string, o ImportOp
 	}
 	if to.IsZero() {
 		to = ParseDate(cfg.To)
+	}
+	// Защита от неограниченного первого прохода: без явной нижней границы
+	// тянем только последнее окно, иначе первый импорт уходит в полную
+	// историю и ловит FLOOD_WAIT. Вся история — тоже явно (-all-history/-full).
+	if from.IsZero() && !o.Unbounded && !o.Full {
+		from = time.Now().Add(-importer.DefaultWindow)
+		fmt.Printf("Диапазон по умолчанию: с %s (вся история — -all-history или -full; свой — -from/from в конфиге)\n",
+			from.Format("2006-01-02"))
 	}
 
 	fmt.Printf("Импорт: %s → %s (%d записей)\n", cfgPath, out, len(chosen))

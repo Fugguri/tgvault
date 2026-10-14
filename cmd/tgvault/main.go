@@ -58,6 +58,7 @@ func main() {
 		allEntries = flag.Bool("all", false, "import: импортировать все записи (иначе только default)")
 		entrySlug  = flag.String("entry", "", "import/view: запись с этим slug")
 		fullReb    = flag.Bool("full", false, "import: полный пересбор логов")
+		allHistory = flag.Bool("all-history", false, "import: тянуть всю историю (иначе окно по умолчанию 30 дней)")
 		fromStr    = flag.String("from", "", "import/view: с даты YYYY-MM-DD")
 		toStr      = flag.String("to", "", "import/view: по дату YYYY-MM-DD")
 		noSecrets  = flag.Bool("no-secrets", false, "import: не выносить токены из переписки")
@@ -220,13 +221,14 @@ func main() {
 			return cli.Migrate(ctx, c, wd, cli.MigrateOpts{NewOut: *newOut})
 		case "import":
 			return cli.Import(ctx, c, wd, cli.ImportOpts{
-				All:      *allEntries,
-				Entry:    *entrySlug,
-				Full:     *fullReb,
-				NoRedact: *noSecrets,
-				From:     cli.ParseDate(*fromStr),
-				To:       cli.ParseDate(*toStr),
-				Tr:       tr,
+				All:       *allEntries,
+				Entry:     *entrySlug,
+				Full:      *fullReb,
+				Unbounded: *allHistory,
+				NoRedact:  *noSecrets,
+				From:      cli.ParseDate(*fromStr),
+				To:        cli.ParseDate(*toStr),
+				Tr:        tr,
 			})
 		case "dialogs":
 			return cli.Dialogs(ctx, c)
