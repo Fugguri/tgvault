@@ -2,6 +2,9 @@ package importer
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 )
@@ -15,15 +18,25 @@ type State struct {
 
 const stateName = ".tg-state.json"
 
-// LoadState читает состояние из директории слага (нет файла — пустое).
-func LoadState(slugDir string) State {
+// LoadState читает состояние из директории слага.
+// Отсутствие файла — это норма (состояния ещё нет), пустое состояние без ошибки.
+// А вот битый файл — ошибка: молчаливый нулевой watermark означает либо повторный
+// импорт всей истории, либо, что хуже, тихую потерю сообщений — и то и другое
+// выглядит для пользователя как «Готово: 0 новых сообщений».
+func LoadState(slugDir string) (State, error) {
 	var s State
-	b, err := os.ReadFile(filepath.Join(slugDir, stateName))
+	p := filepath.Join(slugDir, stateName)
+	b, err := os.ReadFile(p)
 	if err != nil {
-		return s
+		if errors.Is(err, fs.ErrNotExist) {
+			return s, nil
+		}
+		return s, fmt.Errorf("состояние %s: %w", p, err)
 	}
-	_ = json.Unmarshal(b, &s)
-	return s
+	if err := json.Unmarshal(b, &s); err != nil {
+		return s, fmt.Errorf("состояние %s повреждено (%v) — удали файл, чтобы импортировать запись заново", p, err)
+	}
+	return s, nil
 }
 
 // SaveState пишет состояние в директорию слага.

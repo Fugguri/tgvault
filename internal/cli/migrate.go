@@ -57,14 +57,21 @@ func Migrate(ctx context.Context, client *telegram.Client, dir string, o Migrate
 	for _, ch := range v1.Chats {
 		var peer tgx.Peer
 		var ok bool
+		var rerr error
 		switch {
 		case ch.ID != 0:
-			peer, ok, _ = tgx.Resolve(ctx, api, ch.ID)
+			peer, ok, rerr = tgx.Resolve(ctx, api, ch.ID)
 		case ch.Name != "":
-			peer, ok, _ = tgx.Find(ctx, api, ch.Name)
+			peer, ok, rerr = tgx.Find(ctx, api, ch.Name)
 		}
 		if !ok {
-			fmt.Printf("  ⚠ не найден: %+v\n", ch)
+			// Причину не глотаем: «не найден» из-за сетевой ошибки и «не найден»
+			// из-за опечатки в имени — разные вещи, и чинятся по-разному.
+			if rerr != nil {
+				fmt.Fprintf(os.Stderr, "  ⚠ не найден %+v: %v\n", ch, rerr)
+			} else {
+				fmt.Fprintf(os.Stderr, "  ⚠ не найден: %+v\n", ch)
+			}
 			continue
 		}
 

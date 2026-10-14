@@ -69,7 +69,12 @@ func Bot(ctx context.Context, client *telegram.Client, o BotOpts) error {
 	for _, s := range steps {
 		switch s.kind {
 		case "sleep":
-			d, _ := time.ParseDuration(s.value + "s")
+			d, err := time.ParseDuration(s.value + "s")
+			if err != nil {
+				// Иначе битая длительность молча превращалась в sleep 0, и скрипт
+				// продолжался раньше, чем ожидал автор.
+				return fmt.Errorf("шаг sleep %q: нужно число секунд, например 1.5", s.value)
+			}
 			time.Sleep(d)
 			continue
 		case "send":

@@ -209,6 +209,15 @@ func main() {
 
 	tr, cleanup := buildTranscriber(*whisperMdl, *ffmpegPt, *lang)
 	defer cleanup()
+	// Модель не нашлась — голосовые будут без расшифровки. Молчаливая деградация
+	// выглядит как «транскрибация сломана», поэтому говорим вслух и подсказываем,
+	// что делать. Для команд, которые голосовые не трогают, молчим.
+	if tr == nil {
+		switch cmd {
+		case "import", "view", "voice":
+			fmt.Fprintf(os.Stderr, "⚠ модель %s не найдена — голосовые не будут распознаны; `tgvault setup` её скачает\n", *whisperMdl)
+		}
+	}
 
 	cfg := tgclient.Config{
 		APIID:    *apiID,
@@ -360,24 +369,37 @@ func defaultSession() string {
 
 func loadEnv(strict bool) error {
 	// глобальный .env (ключи, пути к whisper) — приоритетнее локального
-	_ = godotenv.Load(filepath.Join(configDir(), ".env"))
+	if p := filepath.Join(configDir(), ".env"); fileExists(p) {
+		if err := godotenv.Load(p); err != nil {
+			// Без этого битый .env выглядел бы как «ключи не заданы» — и уводил
+			// бы искать причину не там.
+			fmt.Fprintf(os.Stderr, "⚠ %s не прочитан: %v\n", p, err)
+		}
+	}
 	dir, _ := os.Getwd()
 	found := false
 	for i := 0; i < 6 && dir != "" && dir != "/"; i++ {
 		if p := filepath.Join(dir, ".env"); fileExists(p) {
-			_ = godotenv.Load(p)
+			if err := godotenv.Load(p); err != nil {
+				fmt.Fprintf(os.Stderr, "⚠ %s не прочитан: %v\n", p, err)
+			}
 			found = true
 			break
 		}
 		dir = filepath.Dir(dir)
 	}
-	if !found {
-		_ = godotenv.Load()
+	if !found && fileExists(".env") {
+		if err := godotenv.Load(); err != nil {
+			fmt.Fprintf(os.Stderr, "⚠ .env не прочитан: %v\n", err)
+		}
 	}
 	if err := secrets.Default().ExpandEnv(); err != nil {
 		if strict {
 			return fmt.Errorf("%w\n  заведи секрет: tgvault secret set NAME", err)
 		}
+		// Не падаем, но и не молчим: нераскрытая ссылка {{secret:…}} уходит
+		// в вывод и в чат обычным текстом.
+		fmt.Fprintf(os.Stderr, "⚠ %v\n", err)
 	}
 	return nil
 }

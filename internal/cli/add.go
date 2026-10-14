@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"fmt"
+	"os"
 	"path/filepath"
 
 	"github.com/gotd/td/telegram"
@@ -86,7 +87,9 @@ func Add(ctx context.Context, client *telegram.Client, dir string, o AddOpts) er
 	}
 	fmt.Printf("✓ добавлено: %s (%s%s) default=%v → %s\n",
 		e.Slug, e.Chat, topicSuffix(e.Topic), e.Default, path)
-	ensureGitignore(dir, cfg.Out)
+	if err := ensureGitignore(dir, cfg.Out); err != nil {
+		fmt.Fprintf(os.Stderr, "  ⚠ %v — добавь эти строки в .gitignore вручную\n", err)
+	}
 	return nil
 }
 

@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"fmt"
+	"os"
 	"path/filepath"
 	"time"
 
@@ -81,13 +82,22 @@ func Import(ctx context.Context, client *telegram.Client, dir string, o ImportOp
 
 	grand := 0
 	windowNotice := false
+	var silent []string // записи, давшие 0 сообщений, вместе с причиной
 	for _, e := range chosen {
 		e = ensurePeer(ctx, client, e)
 		slugDir := filepath.Join(out, e.Slug)
-		minID := 0
+		loadedID := 0
 		if !o.Full {
-			minID = importer.LoadState(slugDir).LastID
+			st, err := importer.LoadState(slugDir)
+			if err != nil {
+				// Битое состояние — громко: молчаливый нулевой watermark означает
+				// повторный импорт всей истории или тихую потерю сообщений.
+				fmt.Fprintf(os.Stderr, "  ⚠ %s: %v\n", e.Slug, err)
+				continue
+			}
+			loadedID = st.LastID
 		}
+		minID := loadedID
 		// Границы считаются на каждую запись отдельно: окно по умолчанию
 		// полагается только тем, у кого ещё нет состояния.
 		rng, err := importer.ResolveRange(o.From, o.To, cfg.From, cfg.To, minID, o.Unbounded, o.Full, time.Now())
@@ -115,13 +125,16 @@ func Import(ctx context.Context, client *telegram.Client, dir string, o ImportOp
 			}
 		}
 		if err != nil {
-			fmt.Printf("  ⚠ %s: %v\n", e.Slug, err)
+			fmt.Fprintf(os.Stderr, "  ⚠ %s: %v\n", e.Slug, err)
 			continue
 		}
 		if err := importer.SaveState(slugDir, importer.State{
 			LastID: last, UpdatedAt: time.Now().Format(time.RFC3339),
 		}); err != nil {
-			fmt.Printf("  ⚠ состояние %s: %v\n", e.Slug, err)
+			fmt.Fprintf(os.Stderr, "  ⚠ состояние %s: %v\n", e.Slug, err)
+		}
+		if n == 0 {
+			silent = append(silent, e.Slug+" — "+whyNothing(rng, loadedID))
 		}
 		grand += n
 	}
@@ -129,7 +142,32 @@ func Import(ctx context.Context, client *telegram.Client, dir string, o ImportOp
 		q.Wait()
 	}
 	fmt.Printf("Готово: %d новых сообщений\n", grand)
+	// «0 новых» само по себе не отличимо от «фильтры отсекли всё»: пользователь
+	// не знает, ждать ли ещё, а агент — надо ли что-то менять. Скажи причину.
+	if grand == 0 && len(silent) > 0 {
+		fmt.Println("Ничего не импортировано:")
+		for _, s := range silent {
+			fmt.Println("  " + s)
+		}
+	}
 	return nil
+}
+
+// whyNothing объясняет, почему запись не дала ни одного сообщения.
+func whyNothing(rng importer.Range, loadedID int) string {
+	switch {
+	case rng.Windowed:
+		return fmt.Sprintf("в окне по умолчанию (с %s) сообщений нет — всю историю тянет -all-history",
+			rng.From.Format("2006-01-02"))
+	case rng.IgnoreWatermark:
+		return "watermark снят (-all-history), но в чате ничего не нашлось"
+	case loadedID > 0:
+		return fmt.Sprintf("состояние актуально (last_id=%d), новых нет — переимпорт: -all-history", loadedID)
+	case !rng.From.IsZero() || !rng.To.IsZero():
+		return "диапазон -from/-to не захватил ни одного сообщения"
+	default:
+		return "в чате нет сообщений"
+	}
 }
 
 // ParseDate разбирает дату из флага (-from/-to). Пустая строка — нулевое время.

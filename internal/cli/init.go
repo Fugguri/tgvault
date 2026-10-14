@@ -95,7 +95,7 @@ func Init(ctx context.Context, client *telegram.Client, dir string) error {
 		var selTopics []string
 		if err := huh.NewForm(huh.NewGroup(
 			huh.NewMultiSelect[string]().
-				Title("Топики «"+p.Title+"» (поиск — /, пусто = весь чат)").
+				Title("Топики «" + p.Title + "» (поиск — /, пусто = весь чат)").
 				Options(topicOpts...).
 				Filterable(true).
 				Value(&selTopics),
@@ -144,9 +144,9 @@ func Init(ctx context.Context, client *telegram.Client, dir string) error {
 		for i := range entries {
 			e := &entries[i]
 			if err := huh.NewForm(huh.NewGroup(
-				huh.NewInput().Title(e.Slug + " — что за чат (note)").Value(&e.Note),
-				huh.NewInput().Title(e.Slug + " — когда идти (when)").Value(&e.When),
-				huh.NewInput().Title(e.Slug + " — кому писать (write_to)").Value(&e.WriteTo),
+				huh.NewInput().Title(e.Slug+" — что за чат (note)").Value(&e.Note),
+				huh.NewInput().Title(e.Slug+" — когда идти (when)").Value(&e.When),
+				huh.NewInput().Title(e.Slug+" — кому писать (write_to)").Value(&e.WriteTo),
 			)).Run(); err != nil {
 				return err
 			}
@@ -178,7 +178,9 @@ func Init(ctx context.Context, client *telegram.Client, dir string) error {
 	if bakPath != "" {
 		fmt.Printf("  бэкап старого: %s\n", bakPath)
 	}
-	ensureGitignore(dir, out)
+	if err := ensureGitignore(dir, out); err != nil {
+		fmt.Fprintf(os.Stderr, "  ⚠ %v — добавь эти строки в .gitignore вручную\n", err)
+	}
 	return nil
 }
 
