@@ -12,6 +12,8 @@ import (
 
 	"github.com/charmbracelet/huh"
 	"github.com/joho/godotenv"
+
+	"github.com/Fugguri/tgvault/internal/netx"
 )
 
 type modelDef struct {
@@ -178,12 +180,19 @@ func downloadModel(ctx context.Context, modelsDir, name string) {
 	fmt.Println("ок")
 }
 
+// download качает файл во временный .part и переносит на место.
+// Клиент с таймаутами транспорта: у http.DefaultClient их нет, и подвисшее
+// соединение подвесило бы `tgvault setup` навсегда.
 func download(ctx context.Context, url, dst string) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	// Сторож потока: модели бывают на гигабайты, и вставшая передача иначе
+	// висит вечно (таймаут на заголовки её не ловит — заголовки уже пришли).
+	stall := netx.NewStall(ctx)
+	defer stall.Stop()
+	req, err := http.NewRequestWithContext(stall.Context(), http.MethodGet, url, nil)
 	if err != nil {
 		return err
 	}
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := netx.Client.Do(req)
 	if err != nil {
 		return err
 	}
@@ -196,7 +205,7 @@ func download(ctx context.Context, url, dst string) error {
 	if err != nil {
 		return err
 	}
-	if _, err := io.Copy(f, resp.Body); err != nil {
+	if _, err := io.Copy(f, stall.Body(resp.Body)); err != nil {
 		f.Close()
 		os.Remove(tmp)
 		return err

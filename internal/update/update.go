@@ -11,6 +11,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	"github.com/Fugguri/tgvault/internal/netx"
 )
 
 // DefaultRepo — владелец/имя репозитория релизов.
@@ -20,6 +22,7 @@ const DefaultRepo = "Fugguri/tgvault"
 var (
 	APIBase      = "https://api.github.com"
 	DownloadBase = "https://github.com"
+	RawBase      = "https://raw.githubusercontent.com"
 )
 
 // Release — найденный релиз и прямая ссылка на нужный ассет.
@@ -31,6 +34,8 @@ type Release struct {
 
 // Fetch спрашивает последний релиз и строит ссылку на ассет под goos/goarch.
 func Fetch(ctx context.Context, repo, goos, goarch string) (*Release, error) {
+	ctx, cancel := netx.MetadataContext(ctx)
+	defer cancel()
 	url := APIBase + "/repos/" + repo + "/releases/latest"
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
@@ -38,7 +43,7 @@ func Fetch(ctx context.Context, repo, goos, goarch string) (*Release, error) {
 	}
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("User-Agent", "tgvault")
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := netx.Client.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -64,14 +69,46 @@ func Fetch(ctx context.Context, repo, goos, goarch string) (*Release, error) {
 	}, nil
 }
 
+// FetchRaw скачивает файл из репозитория на конкретном теге.
+// Тег, а не main: скилл агента должен соответствовать установленному бинарю,
+// иначе инструкция описывает не тот CLI, который лежит на диске.
+func FetchRaw(ctx context.Context, repo, tag, path string) ([]byte, error) {
+	ctx, cancel := netx.MetadataContext(ctx)
+	defer cancel()
+	url := fmt.Sprintf("%s/%s/%s/%s", RawBase, repo, tag, path)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("User-Agent", "tgvault")
+	resp, err := netx.Client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("%s: GitHub ответил %s", url, resp.Status)
+	}
+	b, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", url, err)
+	}
+	return b, nil
+}
+
 // Install скачивает ассет и атомарно заменяет исполняемый файл execPath.
+// Общего таймаута нет: файл крупный, и медленная живая загрузка не должна
+// обрываться. От подвисаний защищают таймауты транспорта плюс сторож потока —
+// вставшая на середине передача иначе висит вечно (наблюдалось вживую).
 func Install(ctx context.Context, r *Release, execPath string) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, r.URL, nil)
+	stall := netx.NewStall(ctx)
+	defer stall.Stop()
+	req, err := http.NewRequestWithContext(stall.Context(), http.MethodGet, r.URL, nil)
 	if err != nil {
 		return err
 	}
 	req.Header.Set("User-Agent", "tgvault")
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := netx.Client.Do(req)
 	if err != nil {
 		return err
 	}
@@ -85,7 +122,7 @@ func Install(ctx context.Context, r *Release, execPath string) error {
 		return err
 	}
 	tmpName := tmp.Name()
-	if _, err := io.Copy(tmp, resp.Body); err != nil {
+	if _, err := io.Copy(tmp, stall.Body(resp.Body)); err != nil {
 		tmp.Close()
 		os.Remove(tmpName)
 		return err

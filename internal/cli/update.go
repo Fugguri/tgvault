@@ -21,18 +21,29 @@ func Update(ctx context.Context, version string, checkOnly, force bool) error {
 		return err
 	}
 	cur := update.Normalize(version)
-	if !force && !update.Newer(rel.Tag, version) {
+	newer := force || update.Newer(rel.Tag, version)
+	if newer {
+		fmt.Printf("доступна версия %s (у тебя %s)\n", rel.Tag, cur)
+	} else {
 		fmt.Printf("✓ уже последняя версия (%s)\n", cur)
-		return nil
 	}
-	fmt.Printf("доступна версия %s (у тебя %s)\n", rel.Tag, cur)
 	if checkOnly {
-		fmt.Printf("обновиться: tgvault update\n%s\n", rel.Page)
+		if newer {
+			fmt.Printf("обновиться: tgvault update\n%s\n", rel.Page)
+		}
 		return nil
 	}
-	if err := update.Install(ctx, rel, exe); err != nil {
-		return err
+	if newer {
+		if err := update.Install(ctx, rel, exe); err != nil {
+			return err
+		}
+		fmt.Printf("✓ обновлено: %s\n%s\n", exe, rel.Page)
 	}
-	fmt.Printf("✓ обновлено: %s\n%s\n", exe, rel.Page)
+	// Скилл лежит вне проекта и обновляется только здесь. Синкаем и когда бинарь
+	// уже свежий: инструкция могла отстать сама по себе. Сеть отвалилась — не
+	// роняем обновление, но и не молчим.
+	if err := SyncSkill(ctx, update.DefaultRepo, rel.Tag); err != nil {
+		fmt.Fprintf(os.Stderr, "  ⚠ %v\n", err)
+	}
 	return nil
 }

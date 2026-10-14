@@ -7,6 +7,9 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
+
+	"github.com/Fugguri/tgvault/internal/netx"
 )
 
 func TestNewer(t *testing.T) {
@@ -85,5 +88,68 @@ func TestInstallReplacesFile(t *testing.T) {
 	}
 	if entries, _ := os.ReadDir(dir); len(entries) != 1 {
 		t.Fatalf("остались временные файлы: %v", entries)
+	}
+}
+
+// Скилл агента должен приезжать с тега релиза, а не с main: иначе инструкция
+// описывает не тот CLI, который лежит на диске.
+func TestFetchRawUsesTag(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/Fugguri/tgvault/v1.2.3/SKILL.md" {
+			t.Errorf("путь запроса: %s", r.URL.Path)
+		}
+		_, _ = w.Write([]byte("# скилл"))
+	}))
+	defer srv.Close()
+
+	oldRaw := RawBase
+	RawBase = srv.URL
+	t.Cleanup(func() { RawBase = oldRaw })
+
+	b, err := FetchRaw(context.Background(), "Fugguri/tgvault", "v1.2.3", "SKILL.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(b) != "# скилл" {
+		t.Fatalf("содержимое = %q", b)
+	}
+}
+
+func TestFetchRawReportsHTTPError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "нет такого тега", http.StatusNotFound)
+	}))
+	defer srv.Close()
+
+	oldRaw := RawBase
+	RawBase = srv.URL
+	t.Cleanup(func() { RawBase = oldRaw })
+
+	if _, err := FetchRaw(context.Background(), "Fugguri/tgvault", "v0.0.0", "SKILL.md"); err == nil {
+		t.Fatal("404 принят за успех: скилл молча не обновился бы")
+	}
+}
+
+// Зависшее соединение не должно подвешивать команду навсегда: без таймаутов
+// `tgvault update` висел 4+ минуты на живом прогоне. Проверяем, что дедлайн
+// действительно срабатывает, а не просто объявлен.
+func TestFetchRawTimesOut(t *testing.T) {
+	block := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		<-block // отвечаем только когда тест отпустит
+	}))
+	defer srv.Close()
+	defer close(block) // раньше srv.Close, иначе Close будет ждать обработчик
+
+	oldRaw, oldTimeout := RawBase, netx.MetadataTimeout
+	RawBase, netx.MetadataTimeout = srv.URL, 100*time.Millisecond
+	t.Cleanup(func() { RawBase, netx.MetadataTimeout = oldRaw, oldTimeout })
+
+	start := time.Now()
+	if _, err := FetchRaw(context.Background(), "Fugguri/tgvault", "v1", "SKILL.md"); err == nil {
+		t.Fatal("зависший сервер не дал ошибки — таймаут не работает")
+	}
+	if d := time.Since(start); d > 5*time.Second {
+		t.Fatalf("ошибка пришла через %s — дедлайн не сработал", d)
 	}
 }

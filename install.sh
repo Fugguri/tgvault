@@ -60,7 +60,8 @@ fi
 
 # Скилл для агентов. Затирать его вслепую нельзя: установленную копию могут
 # править руками. Рядом лежит хеш последней выложенной версии — если файл ему
-# не соответствует, значит правили, и новую версию кладём рядом, а не поверх.
+# не соответствует, значит правили: прежнюю версию сохраняем в .old, а свежую
+# ставим рабочей (иначе агент так и читал бы устаревшую инструкцию).
 sha256() {
   if command -v sha256sum >/dev/null 2>&1; then
     sha256sum "$1" | cut -d' ' -f1
@@ -84,10 +85,8 @@ for d in "$HOME/.claude/skills/tgvault" "$HOME/.config/opencode/skills/tgvault";
       cur_sha="$(sha256 "$d/SKILL.md")"
       old_sha="$(cat "$skill_sha" 2>/dev/null || true)"
       if [ "$cur_sha" != "$new_sha" ] && [ "$cur_sha" != "$old_sha" ]; then
-        cp "$tmp" "$d/SKILL.md.new"
-        rm -f "$tmp"
-        echo "• скилл правили руками — новая версия рядом: $d/SKILL.md.new"
-        continue
+        cp "$d/SKILL.md" "$d/SKILL.md.old"
+        echo "• скилл правили руками — прежняя версия сохранена: $d/SKILL.md.old"
       fi
     fi
     mv "$tmp" "$d/SKILL.md"

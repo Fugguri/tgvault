@@ -27,6 +27,8 @@ type Transcriber func(ctx context.Context, path string) (string, error)
 const DefaultWindow = 30 * 24 * time.Hour
 
 // Options — параметры импорта.
+// Границы сюда приходят уже готовыми: политику окна по умолчанию решает
+// ResolveRange (см. range.go), а Entry трактует нулевое время как «границы нет».
 type Options struct {
 	Out         string    // абсолютный корень раскладки
 	From, To    time.Time // границы (нулевое = без границы)

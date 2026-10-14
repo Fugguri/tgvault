@@ -109,7 +109,7 @@ func Import(ctx context.Context, client *telegram.Client, dir string, o ImportOp
 		}
 		if rng.Windowed && !windowNotice {
 			windowNotice = true
-			fmt.Printf("Диапазон по умолчанию: с %s (вся история — -all-history или -full; свой — -from/from в конфиге)\n",
+			fmt.Printf("Диапазон по умолчанию: с %s (всю историю тянет -all-history; полный пересбор логов — -full; свой диапазон — -from или from в конфиге)\n",
 				rng.From.Format("2006-01-02"))
 		}
 		n, last, err := importer.Entry(ctx, client, e, importer.Options{
