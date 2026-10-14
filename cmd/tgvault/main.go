@@ -54,12 +54,12 @@ func main() {
 		whisperMdl = flag.String("whisper-model", env("WHISPER_MODEL", "models/ggml-base.bin"), "ggml model path")
 		ffmpegPt   = flag.String("ffmpeg", env("FFMPEG", "ffmpeg"), "ffmpeg path")
 		lang       = flag.String("lang", env("LANG_ASR", "ru"), "transcription language")
-		topicID    = flag.Int("topic", 0, "topic id (voice/send)")
+		topicID    = flag.Int("topic", 0, "topic id (voice/send/view)")
 		allEntries = flag.Bool("all", false, "import: импортировать все записи (иначе только default)")
-		entrySlug  = flag.String("entry", "", "import: только запись с этим slug")
+		entrySlug  = flag.String("entry", "", "import/view: запись с этим slug")
 		fullReb    = flag.Bool("full", false, "import: полный пересбор логов")
-		fromStr    = flag.String("from", "", "import: с даты YYYY-MM-DD")
-		toStr      = flag.String("to", "", "import: по дату YYYY-MM-DD")
+		fromStr    = flag.String("from", "", "import/view: с даты YYYY-MM-DD")
+		toStr      = flag.String("to", "", "import/view: по дату YYYY-MM-DD")
 		noSecrets  = flag.Bool("no-secrets", false, "import: не выносить токены из переписки")
 		newOut     = flag.String("new-out", "", "migrate: новый корень (default docs/telegram_chats)")
 
@@ -81,15 +81,22 @@ func main() {
 		updateCheck = flag.Bool("check", false, "update: только проверить, не устанавливать")
 
 		// send
-		sendChat  = flag.String("chat", "", "send: имя чата")
-		sendID    = flag.Int64("id", 0, "send: id чата")
-		sendAlias = flag.String("alias", "", "send: alias/slug из конфига")
-		sendSelf  = flag.Bool("self", false, "send: Saved Messages (Избранное)")
+		sendChat  = flag.String("chat", "", "send/view: имя чата")
+		sendID    = flag.Int64("id", 0, "send/view: id чата")
+		sendAlias = flag.String("alias", "", "send/view: alias/slug из конфига")
+		sendSelf  = flag.Bool("self", false, "send/view: Saved Messages (Избранное)")
 		sendText  = flag.String("text", "", "send: текст ('-' = stdin)")
 		sendTextF = flag.String("text-file", "", "send: текст из файла")
 		sendReply = flag.Int("reply-to", 0, "send: msg_id для ответа")
 		sendEdit  = flag.Int("edit", 0, "send: msg_id для редактирования")
 		sendDo    = flag.Bool("send", false, "send: ВЫПОЛНИТЬ (иначе dry-run)")
+
+		// view — быстрый просмотр сообщений за период без импорта
+		viewLast       = flag.Int("last", 0, "view: только последние N сообщений")
+		viewMaxLen     = flag.Int("max-len", 1500, "view: обрезка текста сообщения, символов (0 — без обрезки)")
+		viewMaxMsgs    = flag.Int("max-msgs", 200, "view: максимум сообщений в выводе (0 — без лимита)")
+		viewMedia      = flag.Bool("media", false, "view: скачать медиа в кэш и печатать пути")
+		viewTranscribe = flag.Bool("transcribe", false, "view: транскрибировать голосовые (с -media)")
 
 		// approve
 		apprTTL = flag.Duration("ttl", 5*time.Minute, "approve: срок действия согласования")
@@ -233,6 +240,14 @@ func main() {
 				return fmt.Errorf(`укажи имя чата: voice "часть имени"`)
 			}
 			return cli.Voice(ctx, c, tr, strings.Join(pos, " "), *topicID)
+		case "view":
+			return cli.View(ctx, c, wd, cli.ViewOpts{
+				Chat: *sendChat, ChatID: *sendID, Alias: *sendAlias, Self: *sendSelf,
+				Entry: *entrySlug, Topic: *topicID,
+				From: cli.ParseDate(*fromStr), To: cli.ParseDate(*toStr),
+				Last: *viewLast, MaxLen: *viewMaxLen, MaxMsgs: *viewMaxMsgs,
+				Media: *viewMedia, Transcribe: *viewTranscribe, Tr: tr,
+			})
 		case "send":
 			return cli.Send(ctx, c, wd, cli.SendOpts{
 				Chat: *sendChat, ChatID: *sendID, Alias: *sendAlias, Self: *sendSelf,
@@ -259,7 +274,7 @@ func main() {
 
 var commands = map[string]bool{
 	"login": true, "init": true, "import": true, "migrate": true,
-	"setup": true, "list": true, "add": true, "send": true, "bot": true, "dialogs": true, "topics": true, "voice": true, "secret": true, "update": true, "manage": true, "approve": true, "pending": true,
+	"setup": true, "list": true, "add": true, "send": true, "bot": true, "dialogs": true, "topics": true, "voice": true, "secret": true, "update": true, "manage": true, "approve": true, "pending": true, "view": true,
 }
 
 type stringSlice []string
@@ -433,6 +448,7 @@ func usage() {
   setup              мастер установки: модели, зависимости, ключи
   init / add         конфиг проекта (init — интерактивно, add — для агентов)
   import             импорт по конфигу (-all, -entry, -from/-to, -full)
+  view               просмотр сообщений за период БЕЗ импорта (-chat/-entry, -from/-to, -last)
   migrate            старый конфиг v1 → v2
   list               сводка записей проекта
   dialogs / topics   список диалогов / форум-топиков
