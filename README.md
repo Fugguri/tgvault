@@ -84,13 +84,14 @@ cd ~/projects/my-project
 | `migrate` | перевод старого конфига v1 → v2 |
 | `dialogs` | список диалогов |
 | `topics "<чат>"` | форум-топики чата |
+| `voice "<чат>"` | первое голосовое из последних 100 сообщений: скачать и распознать (`-topic`) |
 | `secret` | секреты из чатов: `chat <slug> [NAME]` |
 | `update` | обновиться до свежего релиза (`-check` — только проверить) |
-| `send` | отправить/править/удалить (`-text`, `-file`, `-reply-to`, `-topic`, `-edit`, `-delete`, `-send`) |
-| `manage` | чаты/топики/люди: `create`/`topic`/`forward`/`invite`/`rights`/`kick`/`delete` (dry-run по умолчанию; `-send` только после согласования) |
-| `approve <id> [-y]` | согласовать исходящее действие (`-y` — без вопроса, после согласия пользователя; `-ttl`) |
+| `send` | отправить/править/удалить (цель/`-self`, `-text`/`-text-file`, `-file`, `-reply-to`, `-topic`, `-edit`/`-delete`, `-send`) |
+| `manage` | чаты/топики/люди: `create`/`new`, `topic`, `forward`/`fwd`, `invite`/`add-user`/`adduser`, `rights`/`admin`/`promote`, `kick`/`ban`, `delete`/`del`/`rm` (dry-run по умолчанию; `-send` только после согласования) |
+| `approve <id> [-y]` | согласовать исходящее действие (в терминале спросит `[y/N]`; `-y` — подтвердить без вопроса, когда терминала нет; `-ttl`) |
 | `pending` | очередь запросов на согласование |
-| `bot` | клик-тест бота (`-bot`, `-step send:/start`, `-step click:…`, `-go` после согласования) |
+| `bot` | клик-тест бота (`-bot`, `-step send:/start`, `-step click:…`, `-pause`, `-allow-danger`, `-go` после согласования) |
 
 ## Быстрый просмотр без импорта (`view`)
 
@@ -140,7 +141,8 @@ tgvault view -chat "Mind" -topic 112 -from 2026-10-01              # топик 
 
 Ловятся: Telegram-бот-токен, OpenAI `sk-…`, GitHub `ghp_…`, Google `AIza…`,
 AWS `AKIA…`, Slack `xox…`, JWT, блоки `-----BEGIN … PRIVATE KEY-----`, а также
-`api_key`/`token`/`secret`/`password` со значением.
+пары «ключ: значение» — `api_key`/`apikey`, `secret_key`/`secret`,
+`access_token`/`auth_token`, `client_secret`, `password`/`passwd`/`pwd`.
 
 ```bash
 tgvault import -no-secrets              # отключить вынос для этого прогона

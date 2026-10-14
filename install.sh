@@ -58,12 +58,41 @@ if [ -n "$legacy" ]; then
   esac
 fi
 
+# Скилл для агентов. Затирать его вслепую нельзя: установленную копию могут
+# править руками. Рядом лежит хеш последней выложенной версии — если файл ему
+# не соответствует, значит правили, и новую версию кладём рядом, а не поверх.
+sha256() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$1" | cut -d' ' -f1
+  else
+    shasum -a 256 "$1" | cut -d' ' -f1
+  fi
+}
+
+skill_sha="$HOME/.config/tgvault/skill.sha"
 for d in "$HOME/.claude/skills/tgvault" "$HOME/.config/opencode/skills/tgvault"; do
   if [ -d "$(dirname "$d")" ]; then
-    mkdir -p "$d"
-    if curl -fsSL "$skill_url" -o "$d/SKILL.md"; then
-      echo "✓ скилл: $d/SKILL.md"
+    mkdir -p "$d" "$(dirname "$skill_sha")"
+    tmp="$(mktemp)"
+    if ! curl -fsSL "$skill_url" -o "$tmp"; then
+      echo "⚠ не удалось скачать SKILL.md из ${REPO}" >&2
+      rm -f "$tmp"
+      continue
     fi
+    new_sha="$(sha256 "$tmp")"
+    if [ -f "$d/SKILL.md" ]; then
+      cur_sha="$(sha256 "$d/SKILL.md")"
+      old_sha="$(cat "$skill_sha" 2>/dev/null || true)"
+      if [ "$cur_sha" != "$new_sha" ] && [ "$cur_sha" != "$old_sha" ]; then
+        cp "$tmp" "$d/SKILL.md.new"
+        rm -f "$tmp"
+        echo "• скилл правили руками — новая версия рядом: $d/SKILL.md.new"
+        continue
+      fi
+    fi
+    mv "$tmp" "$d/SKILL.md"
+    printf '%s\n' "$new_sha" > "$skill_sha"
+    echo "✓ скилл: $d/SKILL.md"
   fi
 done
 echo

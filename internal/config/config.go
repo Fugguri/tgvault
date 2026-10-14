@@ -17,7 +17,7 @@ const Version = 2
 type Config struct {
 	Version int     `json:"version"`
 	Project string  `json:"project"`
-	Out     string  `json:"out"`  // корень раскладки (docs/telegram_chats)
+	Out     string  `json:"out"`            // корень раскладки (docs/telegram_chats)
 	From    string  `json:"from,omitempty"` // YYYY-MM-DD, нижняя граница импорта
 	To      string  `json:"to,omitempty"`   // YYYY-MM-DD, верхняя граница
 	Entries []Entry `json:"entries"`
@@ -25,10 +25,10 @@ type Config struct {
 
 // Entry — запись реестра: чат (и, возможно, конкретный топик).
 type Entry struct {
-	Chat       string `json:"chat"`       // человекочитаемое имя чата
-	ChatID     int64  `json:"chat_id"`    // raw entity id
-	AccessHash int64  `json:"access_hash"` // access_hash для построения peer
-	Kind       string `json:"kind"`       // user | chat | channel
+	Chat       string `json:"chat"`               // человекочитаемое имя чата
+	ChatID     int64  `json:"chat_id"`            // raw entity id
+	AccessHash int64  `json:"access_hash"`        // access_hash для построения peer
+	Kind       string `json:"kind"`               // user | chat | channel
 	Topic      string `json:"topic,omitempty"`    // имя топика (если форум)
 	TopicID    int    `json:"topic_id,omitempty"` // top message id топика
 	Slug       string `json:"slug"`               // имя папки (плоско, <chat>__<topic>)

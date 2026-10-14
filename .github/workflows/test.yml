@@ -1,0 +1,52 @@
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  # Быстрая проверка. Пакеты internal/ не тянут cgo-часть whisper.cpp (её
+  # импортирует только cmd/), поэтому сборка либ здесь не нужна — проверено:
+  # `go test ./internal/...` и `go vet ./internal/...` идут со скрытым build_go.
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: gofmt
+        run: |
+          unformatted="$(gofmt -l ./cmd ./internal)"
+          if [ -n "$unformatted" ]; then
+            echo "не отформатировано gofmt:"
+            echo "$unformatted"
+            exit 1
+          fi
+      - name: vet
+        run: go vet ./internal/...
+      - name: test
+        run: go test -race -count=1 ./internal/...
+
+  # cmd/tgvault импортирует internal/transcribe (cgo), поэтому тут нужны
+  # статические либы whisper.cpp. Job ловит поломку интерфейсов на стороне main —
+  # то, что тесты пакетов не видят.
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/cache@v4
+        with:
+          path: third_party/whisper.cpp/build_go
+          key: whisper-${{ runner.os }}-${{ hashFiles('Makefile') }}
+      - name: Build whisper.cpp (static)
+        run: make whisper-libs WHISPER_GGML_NATIVE=OFF
+      - name: Build
+        run: go build ./...
