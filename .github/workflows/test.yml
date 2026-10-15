@@ -42,6 +42,12 @@ jobs:
   # cmd/tgvault импортирует internal/transcribe (cgo), поэтому тут нужны
   # статические либы whisper.cpp. Job ловит поломку интерфейсов на стороне main
   # и сверяет вывод CLI с эталоном — то, что тесты пакетов не видят.
+  #
+  # Кэша сборки здесь нет намеренно. Восстановление каталога
+  # third_party/whisper.cpp/build_go создавало сам third_party/whisper.cpp, и
+  # `make whisper-libs` считал исходники уже склонированными: клон молча
+  # пропускался, cmake падал без CMakeLists.txt. Сборка либ занимает пару минут —
+  # дешевле собирать каждый раз, чем ловить это снова.
   build:
     runs-on: ubuntu-latest
     steps:
@@ -49,10 +55,6 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-      - uses: actions/cache@v4
-        with:
-          path: third_party/whisper.cpp/build_go
-          key: whisper-${{ runner.os }}-${{ hashFiles('Makefile') }}
       - name: Build whisper.cpp (static)
         run: make whisper-libs WHISPER_GGML_NATIVE=OFF
       - name: Vet

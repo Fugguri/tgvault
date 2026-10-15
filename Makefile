@@ -10,9 +10,18 @@ WHISPER_GGML_NATIVE ?= ON
 .PHONY: build whisper-libs run test vet golden golden-update tidy clean
 
 # Собрать статические библиотеки whisper.cpp под текущую систему.
+# Наличие исходников проверяем по CMakeLists.txt, а не по каталогу: каталог
+# может появиться сам — например, от распаковки кэша сборки в CI, — и тогда
+# клон молча пропускался, а cmake падал с невнятным «does not appear to
+# contain CMakeLists.txt».
 whisper-libs:
 	@if [ ! -d "$(WHISPER_DIR)" ]; then \
 		git clone --depth 1 https://github.com/ggml-org/whisper.cpp "$(WHISPER_DIR)"; \
+	elif [ ! -f "$(WHISPER_DIR)/CMakeLists.txt" ]; then \
+		echo "ошибка: $(WHISPER_DIR) есть, но исходников whisper.cpp в нём нет."; \
+		echo "  так выглядит неполный клон или каталог, созданный распаковкой кэша."; \
+		echo "  убери каталог и повтори: rm -rf $(WHISPER_DIR)"; \
+		exit 1; \
 	fi
 	cmake -S $(WHISPER_DIR) -B $(WHISPER_BUILD) \
 		-DCMAKE_BUILD_TYPE=Release \
