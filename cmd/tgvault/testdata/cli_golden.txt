@@ -1,0 +1,305 @@
+### -h
+rc=0
+tgvault — импорт Telegram-чатов в Markdown.
+
+Использование:
+  tgvault <команда> [флаги]
+
+Команды:
+  login              вход в Telegram (сессия глобальная)
+  setup              мастер установки: модели, зависимости, ключи
+  init / add         конфиг проекта (init — интерактивно, add — для агентов)
+  import             импорт по конфигу (-all, -entry, -from/-to, -full)
+  view               просмотр сообщений за период БЕЗ импорта (-chat/-entry, -from/-to, -last)
+  migrate            старый конфиг v1 → v2
+  list               сводка записей проекта
+  dialogs / topics   список диалогов / форум-топиков
+  voice              найти и транскрибировать голосовое
+  send               отправить/править/удалить сообщение (требует согласования)
+  manage             чаты/топики/люди: create|topic|forward|invite|rights|kick|delete
+  bot                клик-тест бота (требует согласования при -go)
+  approve / pending  согласовать исходящее (-y после согласия) / список запросов
+  secret             хранилище ключей: set|ls|ref|rm|check|chat
+  update             обновление до свежего релиза (-check — только проверить)
+
+Флаги:
+  -alias string
+    	send/view: alias/slug из конфига
+  -all
+    	import: импортировать все записи (иначе только default)
+  -all-history
+    	import: тянуть всю историю (иначе окно по умолчанию 30 дней)
+  -allow-danger
+    	bot: разрешить необратимые кнопки
+  -api-hash string
+    	Telegram api_hash
+  -api-id int
+    	Telegram api_id
+  -bot string
+    	bot: @username или id
+  -chat string
+    	send/view: имя чата
+  -check
+    	update: только проверить, не устанавливать
+  -default
+    	add: импортировать каждый раз
+  -default-model string
+    	setup: модель по умолчанию
+  -delete value
+    	send: msg_id для удаления (можно несколько)
+  -edit int
+    	send: msg_id для редактирования
+  -entry string
+    	import/view: запись с этим slug
+  -ffmpeg string
+    	ffmpeg path (default "ffmpeg")
+  -file value
+    	send: файл/медиа (можно несколько)
+  -force
+    	secret set: перезаписать; update: переустановить
+  -from string
+    	import/view: с даты YYYY-MM-DD
+  -full
+    	import: полный пересбор логов
+  -go
+    	bot: выполнить (иначе план)
+  -id int
+    	send/view: id чата
+  -lang string
+    	transcription language (default "ru")
+  -last int
+    	view: только последние N сообщений
+  -max-len int
+    	view: обрезка текста сообщения, символов (0 — без обрезки) (default 1500)
+  -max-msgs int
+    	view: максимум сообщений в выводе (0 — без лимита) (default 200)
+  -media
+    	view: скачать медиа в кэш и печатать пути
+  -models string
+    	setup: модели через запятую (tiny,base,...)
+  -new-out string
+    	migrate: новый корень (default docs/telegram_chats)
+  -no-secrets
+    	import: не выносить токены из переписки
+  -note string
+    	add: что за чат
+  -out string
+    	add: корень раскладки (для нового конфига)
+  -password string
+    	2FA password (optional)
+  -pause float
+    	bot: пауза после действия, сек (default 4)
+  -phone string
+    	phone (+7...)
+  -reply-to int
+    	send: msg_id для ответа
+  -self
+    	send/view: Saved Messages (Избранное)
+  -send
+    	send: ВЫПОЛНИТЬ (иначе dry-run)
+  -session string
+    	session file (default "<HOME>/.config/tgvault/session.json")
+  -slug string
+    	add: имя папки
+  -step value
+    	bot: шаг send:/start | click:Текст | expect:Текст | expect-doc | sleep:2
+  -text string
+    	send: текст ('-' = stdin)
+  -text-file string
+    	send: текст из файла
+  -to string
+    	import/view: по дату YYYY-MM-DD
+  -topic int
+    	topic id (voice/send/view)
+  -transcribe
+    	view: транскрибировать голосовые (с -media)
+  -ttl duration
+    	approve: срок действия согласования (default 5m0s)
+  -unattended
+    	setup: без вопросов
+  -when string
+    	add: когда идти
+  -whisper-model string
+    	ggml model path (default "models/ggml-base.bin")
+  -write-to string
+    	add: кому писать
+  -y	approve: подтвердить без вопроса (только с согласия пользователя)
+### list
+rc=0
+# golden  (<DIR>/.tg-import.json)
+# out: docs/telegram_chats
+* test                         Тестовый чат  фикстура
+  second                       Второй чат  
+(* = импортируется каждый раз)
+### secret ls
+rc=0
+Секретов нет (<HOME>/.secrets)
+### pending
+rc=0
+Запросов на согласование нет
+### import
+rc=1
+ошибка: нужны -api-id и -api-hash (или TG_API_ID/TG_API_HASH)
+### import -all -full -all-history -no-secrets
+rc=1
+ошибка: нужны -api-id и -api-hash (или TG_API_ID/TG_API_HASH)
+### import -from 2026-01-01
+rc=1
+ошибка: нужны -api-id и -api-hash (или TG_API_ID/TG_API_HASH)
+### import -from 2026-01-01 -to 2026-02-01
+rc=1
+ошибка: нужны -api-id и -api-hash (или TG_API_ID/TG_API_HASH)
+### import -from 2026-1-5
+rc=1
+ошибка: -from: дата "2026-1-5": нужен формат YYYY-MM-DD
+### import -to 01.02.2026
+rc=1
+ошибка: -to: дата "01.02.2026": нужен формат YYYY-MM-DD
+### import -from вчера
+rc=1
+ошибка: -from: дата "вчера": нужен формат YYYY-MM-DD
+### import -from 2026-02-30
+rc=1
+ошибка: -from: дата "2026-02-30": нужен формат YYYY-MM-DD
+### import -nosuchflag
+rc=2
+flag provided but not defined: -nosuchflag
+tgvault — импорт Telegram-чатов в Markdown.
+
+Использование:
+  tgvault <команда> [флаги]
+
+Команды:
+  login              вход в Telegram (сессия глобальная)
+  setup              мастер установки: модели, зависимости, ключи
+  init / add         конфиг проекта (init — интерактивно, add — для агентов)
+  import             импорт по конфигу (-all, -entry, -from/-to, -full)
+  view               просмотр сообщений за период БЕЗ импорта (-chat/-entry, -from/-to, -last)
+  migrate            старый конфиг v1 → v2
+  list               сводка записей проекта
+  dialogs / topics   список диалогов / форум-топиков
+  voice              найти и транскрибировать голосовое
+  send               отправить/править/удалить сообщение (требует согласования)
+  manage             чаты/топики/люди: create|topic|forward|invite|rights|kick|delete
+  bot                клик-тест бота (требует согласования при -go)
+  approve / pending  согласовать исходящее (-y после согласия) / список запросов
+  secret             хранилище ключей: set|ls|ref|rm|check|chat
+  update             обновление до свежего релиза (-check — только проверить)
+
+Флаги:
+  -alias string
+    	send/view: alias/slug из конфига
+  -all
+    	import: импортировать все записи (иначе только default)
+  -all-history
+    	import: тянуть всю историю (иначе окно по умолчанию 30 дней)
+  -allow-danger
+    	bot: разрешить необратимые кнопки
+  -api-hash string
+    	Telegram api_hash
+  -api-id int
+    	Telegram api_id
+  -bot string
+    	bot: @username или id
+  -chat string
+    	send/view: имя чата
+  -check
+    	update: только проверить, не устанавливать
+  -default
+    	add: импортировать каждый раз
+  -default-model string
+    	setup: модель по умолчанию
+  -delete value
+    	send: msg_id для удаления (можно несколько)
+  -edit int
+    	send: msg_id для редактирования
+  -entry string
+    	import/view: запись с этим slug
+  -ffmpeg string
+    	ffmpeg path (default "ffmpeg")
+  -file value
+    	send: файл/медиа (можно несколько)
+  -force
+    	secret set: перезаписать; update: переустановить
+  -from string
+    	import/view: с даты YYYY-MM-DD
+  -full
+    	import: полный пересбор логов
+  -go
+    	bot: выполнить (иначе план)
+  -id int
+    	send/view: id чата
+  -lang string
+    	transcription language (default "ru")
+  -last int
+    	view: только последние N сообщений
+  -max-len int
+    	view: обрезка текста сообщения, символов (0 — без обрезки) (default 1500)
+  -max-msgs int
+    	view: максимум сообщений в выводе (0 — без лимита) (default 200)
+  -media
+    	view: скачать медиа в кэш и печатать пути
+  -models string
+    	setup: модели через запятую (tiny,base,...)
+  -new-out string
+    	migrate: новый корень (default docs/telegram_chats)
+  -no-secrets
+    	import: не выносить токены из переписки
+  -note string
+    	add: что за чат
+  -out string
+    	add: корень раскладки (для нового конфига)
+  -password string
+    	2FA password (optional)
+  -pause float
+    	bot: пауза после действия, сек (default 4)
+  -phone string
+    	phone (+7...)
+  -reply-to int
+    	send: msg_id для ответа
+  -self
+    	send/view: Saved Messages (Избранное)
+  -send
+    	send: ВЫПОЛНИТЬ (иначе dry-run)
+  -session string
+    	session file (default "<HOME>/.config/tgvault/session.json")
+  -slug string
+    	add: имя папки
+  -step value
+    	bot: шаг send:/start | click:Текст | expect:Текст | expect-doc | sleep:2
+  -text string
+    	send: текст ('-' = stdin)
+  -text-file string
+    	send: текст из файла
+  -to string
+    	import/view: по дату YYYY-MM-DD
+  -topic int
+    	topic id (voice/send/view)
+  -transcribe
+    	view: транскрибировать голосовые (с -media)
+  -ttl duration
+    	approve: срок действия согласования (default 5m0s)
+  -unattended
+    	setup: без вопросов
+  -when string
+    	add: когда идти
+  -whisper-model string
+    	ggml model path (default "models/ggml-base.bin")
+  -write-to string
+    	add: кому писать
+  -y	approve: подтвердить без вопроса (только с согласия пользователя)
+### migrate
+rc=1
+ошибка: нужны -api-id и -api-hash (или TG_API_ID/TG_API_HASH)
+### view -entry test -last 5
+rc=1
+ошибка: нужны -api-id и -api-hash (или TG_API_ID/TG_API_HASH)
+### view -from вчера
+rc=1
+ошибка: -from: дата "вчера": нужен формат YYYY-MM-DD
+### view -to 2026-02-30
+rc=1
+ошибка: -to: дата "2026-02-30": нужен формат YYYY-MM-DD
+### nosuchcommand
+rc=1
+ошибка: нужны -api-id и -api-hash (или TG_API_ID/TG_API_HASH)

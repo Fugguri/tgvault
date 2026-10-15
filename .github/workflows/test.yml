@@ -33,8 +33,8 @@ jobs:
         run: go test -race -count=1 ./internal/...
 
   # cmd/tgvault импортирует internal/transcribe (cgo), поэтому тут нужны
-  # статические либы whisper.cpp. Job ловит поломку интерфейсов на стороне main —
-  # то, что тесты пакетов не видят.
+  # статические либы whisper.cpp. Job ловит поломку интерфейсов на стороне main
+  # и сверяет вывод CLI с эталоном — то, что тесты пакетов не видят.
   build:
     runs-on: ubuntu-latest
     steps:
@@ -48,5 +48,11 @@ jobs:
           key: whisper-${{ runner.os }}-${{ hashFiles('Makefile') }}
       - name: Build whisper.cpp (static)
         run: make whisper-libs WHISPER_GGML_NATIVE=OFF
+      - name: Vet
+        run: go vet ./...
       - name: Build
         run: go build ./...
+      # Сверяет вывод CLI с эталоном — ловит правки, меняющие поведение команд,
+      # которые тесты пакетов не видят.
+      - name: Golden CLI
+        run: go test ./cmd/tgvault -run TestCLIGolden
