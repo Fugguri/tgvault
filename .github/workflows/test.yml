@@ -9,9 +9,10 @@ permissions:
   contents: read
 
 jobs:
-  # Быстрая проверка. Пакеты internal/ не тянут cgo-часть whisper.cpp (её
-  # импортирует только cmd/), поэтому сборка либ здесь не нужна — проверено:
-  # `go test ./internal/...` и `go vet ./internal/...` идут со скрытым build_go.
+  # Быстрая проверка без сборки whisper.cpp. `third_party/` в репозиторий не
+  # входит (gitignore), поэтому ни заголовков whisper.h, ни собранных либ здесь
+  # нет — пакет transcribe собирается через native_stub.go (`//go:build !cgo`),
+  # отсюда CGO_ENABLED=0.
   test:
     runs-on: ubuntu-latest
     steps:
@@ -28,9 +29,15 @@ jobs:
             exit 1
           fi
       - name: vet
+        env:
+          CGO_ENABLED: "0"
         run: go vet ./internal/...
+      # -race требует cgo, а с cgo transcribe без whisper.h не собрать. Тестов
+      # в transcribe нет, сам пакет проверяется в job'е build.
       - name: test
-        run: go test -race -count=1 ./internal/...
+        run: |
+          pkgs="$(CGO_ENABLED=0 go list ./internal/... | grep -v '/internal/transcribe$')"
+          go test -race -count=1 $pkgs
 
   # cmd/tgvault импортирует internal/transcribe (cgo), поэтому тут нужны
   # статические либы whisper.cpp. Job ловит поломку интерфейсов на стороне main

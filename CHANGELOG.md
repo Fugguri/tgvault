@@ -42,7 +42,11 @@
 ### Добавлено
 
 - **CI на push и pull request** (`.github/workflows/test.yml`): `gofmt`, `go vet`
-  и `go test -race` по `./internal/...` — без сборки whisper.cpp, поэтому быстро;
+  и `go test -race` по `./internal/...` — без сборки whisper.cpp, поэтому быстро.
+  `third_party/` в репозиторий не входит, поэтому `vet` идёт с `CGO_ENABLED=0`
+  (пакет `transcribe` собирается через `native_stub.go`), а из `-race` он исключён:
+  `-race` требует cgo, а с cgo без `whisper.h` не собрать. Сам пакет проверяется
+  в job'е ниже, где либы есть;
   плюс отдельный job, который собирает либы, делает `go vet ./...` и
   `go build ./...` и гоняет эталонный тест CLI, чтобы ловить поломку со стороны
   `cmd/`. До этого тесты не запускались нигде: workflow был только на тег.
