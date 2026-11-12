@@ -91,6 +91,8 @@ tgvault — импорт Telegram-чатов в Markdown.
     	bot: пауза после действия, сек (default 4)
   -phone string
     	phone (+7...)
+  -qr
+    	login: вход по QR-коду (не нужен код из Telegram)
   -reply-to int
     	send: msg_id для ответа
   -self
@@ -255,6 +257,8 @@ tgvault — импорт Telegram-чатов в Markdown.
     	bot: пауза после действия, сек (default 4)
   -phone string
     	phone (+7...)
+  -qr
+    	login: вход по QR-коду (не нужен код из Telegram)
   -reply-to int
     	send: msg_id для ответа
   -self

@@ -10,6 +10,7 @@ import (
 	"github.com/gotd/td/session"
 	"github.com/gotd/td/telegram"
 	"github.com/gotd/td/telegram/auth"
+	"github.com/gotd/td/telegram/auth/qrlogin"
 	"github.com/gotd/td/tg"
 	"golang.org/x/term"
 )
@@ -21,6 +22,7 @@ type Config struct {
 	Phone    string
 	Password string // 2FA, может быть пустым — тогда спросим интерактивно
 	Session  string // путь к файлу сессии
+	QR       bool   // вход по QR-коду вместо кода из Telegram
 }
 
 // Run поднимает клиент, при необходимости логинит и отдаёт управление в fn.
@@ -33,15 +35,14 @@ func Run(ctx context.Context, c Config, fn func(context.Context, *telegram.Clien
 	}
 	defer unlock()
 
+	dispatcher := tg.NewUpdateDispatcher()
+	loggedIn := qrlogin.OnLoginToken(dispatcher)
 	client := telegram.NewClient(c.APIID, c.APIHash, telegram.Options{
 		SessionStorage: &session.FileStorage{Path: c.Session},
+		UpdateHandler:  dispatcher,
 	})
 	return client.Run(ctx, func(ctx context.Context) error {
-		flow := auth.NewFlow(
-			interactiveAuth{phone: c.Phone, password: c.Password},
-			auth.SendCodeOptions{},
-		)
-		if err := client.Auth().IfNecessary(ctx, flow); err != nil {
+		if err := authenticate(ctx, client, interactiveAuth{phone: c.Phone, password: c.Password}, c.QR, loggedIn); err != nil {
 			return fmt.Errorf("авторизация: %w", err)
 		}
 		return fn(ctx, client)

@@ -44,6 +44,7 @@ func main() {
 		apiHash    = flag.String("api-hash", env("TG_API_HASH"), "Telegram api_hash")
 		phone      = flag.String("phone", env("TG_PHONE"), "phone (+7...)")
 		password   = flag.String("password", env("TG_2FA"), "2FA password (optional)")
+		qrLogin    = flag.Bool("qr", false, "login: вход по QR-коду (не нужен код из Telegram)")
 		sessionPt  = flag.String("session", env("TG_SESSION", defaultSession()), "session file")
 		whisperMdl = flag.String("whisper-model", env("WHISPER_MODEL", "models/ggml-base.bin"), "ggml model path")
 		ffmpegPt   = flag.String("ffmpeg", env("FFMPEG", "ffmpeg"), "ffmpeg path")
@@ -219,6 +220,7 @@ func main() {
 		Phone:    *phone,
 		Password: *password,
 		Session:  *sessionPt,
+		QR:       *qrLogin,
 	}
 
 	err := tgclient.Run(ctx, cfg, func(ctx context.Context, c *telegram.Client) error {

@@ -7,6 +7,7 @@ require (
 	github.com/gotd/td v0.162.0
 	github.com/joho/godotenv v1.5.1
 	golang.org/x/term v0.46.0
+	rsc.io/qr v0.2.0
 )
 
 require (
@@ -71,5 +72,4 @@ require (
 	golang.org/x/text v0.40.0 // indirect
 	golang.org/x/tools v0.48.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
-	rsc.io/qr v0.2.0 // indirect
 )

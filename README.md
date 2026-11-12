@@ -18,6 +18,7 @@ curl -fsSL https://raw.githubusercontent.com/Fugguri/tgvault/main/install.sh | b
 ```bash
 tgvault setup      # модели, Telegram api_id/api_hash -> ~/.config/tgvault/.env
 tgvault login      # вход в Telegram (один раз, сессия глобальная)
+tgvault login -qr  # если код не приходит в приложение — вход по QR-коду
 ```
 
 ## Возможности
@@ -76,7 +77,7 @@ cd ~/projects/my-project
 | Команда | Что делает |
 |---|---|
 | `setup` | мастер установки: модели (выбор), проверка deps, глобальный `.env` |
-| `login` | вход в Telegram, сессия в `~/.config/tgvault/session.json` |
+| `login` | вход в Telegram, сессия в `~/.config/tgvault/session.json` (`-qr` — по QR-коду, если код не приходит в приложение) |
 | `init` | создать/пересоздать конфиг проекта (поиск чатов/топиков; при существующем — дополнить/перезаписать с бэкапом) |
 | `add` | неинтерактивно добавить чат/топик в конфиг (для агентов; создаёт конфиг и `.gitignore`) |
 | `import` | импорт по конфигу (`-all`, `-entry`, `-from/-to`, `-all-history`, `-full`) |
